@@ -327,13 +327,21 @@ async function startCurrentCamera() {
 
   try {
     errorBox.classList.add('hidden');
+    state.cameraStarted = false;
+    updateRoomView();
+
     await startCamera(video, state.facingMode);
+
     state.cameraStarted = true;
     video.classList.toggle('mirrored', state.facingMode === 'user');
+
+    updateRoomView();
   } catch (error) {
     state.cameraStarted = false;
     errorBox.textContent = error.message || 'Camera could not start.';
     errorBox.classList.remove('hidden');
+
+    updateRoomView();
   }
 }
 

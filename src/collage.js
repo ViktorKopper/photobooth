@@ -1,5 +1,3 @@
-import { getBlob, ref } from 'firebase/storage';
-import { storage } from './firebase.js';
 import { formatDate } from './utils.js';
 
 function roundRect(ctx, x, y, width, height, radius) {
@@ -16,6 +14,7 @@ function roundRect(ctx, x, y, width, height, radius) {
 function drawCoverImage(ctx, image, x, y, width, height) {
   const imageRatio = image.width / image.height;
   const targetRatio = width / height;
+
   let sourceX = 0;
   let sourceY = 0;
   let sourceWidth = image.width;
@@ -29,27 +28,67 @@ function drawCoverImage(ctx, image, x, y, width, height) {
     sourceY = (image.height - sourceHeight) / 2;
   }
 
-  ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+  ctx.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    x,
+    y,
+    width,
+    height
+  );
 }
 
-async function loadImageFromStoragePath(storagePath) {
-  const blob = await getBlob(ref(storage, storagePath));
-  const objectUrl = URL.createObjectURL(blob);
+async function loadImageFromUrl(url) {
+  if (!url) {
+    throw new Error('Missing photo download URL.');
+  }
+
+  let response;
 
   try {
-    const image = new Image();
-    image.src = objectUrl;
-    await image.decode();
-    return { image, objectUrl };
+    response = await fetch(url, {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-store'
+    });
   } catch (error) {
-    URL.revokeObjectURL(objectUrl);
-    throw error;
+    throw new Error('Could not fetch one uploaded photo from Firebase Storage. This is most likely a Storage CORS issue.');
   }
+
+  if (!response.ok) {
+    throw new Error(`Could not load one uploaded photo. Storage returned HTTP ${response.status}.`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+
+    image.onload = () => {
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Could not decode one uploaded photo as an image.'));
+    };
+
+    image.src = objectUrl;
+  });
 }
 
 function getOrderedPhotos(photos, layout) {
-  const viktor = photos.filter((photo) => photo.owner === 'viktor').sort((a, b) => a.index - b.index);
-  const jericka = photos.filter((photo) => photo.owner === 'jericka').sort((a, b) => a.index - b.index);
+  const viktor = photos
+    .filter((photo) => photo.owner === 'viktor')
+    .sort((a, b) => a.index - b.index);
+
+  const jericka = photos
+    .filter((photo) => photo.owner === 'jericka')
+    .sort((a, b) => a.index - b.index);
 
   if (viktor.length !== 3 || jericka.length !== 3) {
     throw new Error('Both Viktor and Jericka need exactly 3 photos before generating the collage.');
@@ -59,43 +98,56 @@ function getOrderedPhotos(photos, layout) {
     return [viktor[0], jericka[0], viktor[1], jericka[1], viktor[2], jericka[2]];
   }
 
-  // Default columns: left column Viktor, right column Jericka.
   return [viktor[0], jericka[0], viktor[1], jericka[1], viktor[2], jericka[2]];
+}
+
+async function loadImagesSequentially(orderedPhotos) {
+  const images = [];
+
+  for (const photo of orderedPhotos) {
+    images.push(await loadImageFromUrl(photo.downloadUrl));
+  }
+
+  return images;
 }
 
 export async function generateCollage({ photos, customMessage, layout = 'columns' }) {
   const orderedPhotos = getOrderedPhotos(photos, layout);
-  const loaded = await Promise.all(orderedPhotos.map((photo) => loadImageFromStoragePath(photo.storagePath)));
+
+  // Load sequentially, not all 6 at once. This is more stable on mobile.
+  const loadedImages = await loadImagesSequentially(orderedPhotos);
 
   const canvas = document.createElement('canvas');
   canvas.width = 1600;
   canvas.height = 2400;
+
   const ctx = canvas.getContext('2d');
 
-  // Background
   const gradient = ctx.createLinearGradient(0, 0, 1600, 2400);
   gradient.addColorStop(0, '#fff7f4');
   gradient.addColorStop(0.55, '#ffe7ec');
   gradient.addColorStop(1, '#fffdf8');
+
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Soft decorative hearts.
   ctx.save();
   ctx.globalAlpha = 0.16;
   ctx.fillStyle = '#d94d72';
   ctx.font = '72px Georgia, serif';
+
   ['♡', '♥', '♡', '♥', '♡'].forEach((heart, index) => {
     ctx.fillText(heart, 110 + index * 320, 180 + (index % 2) * 60);
     ctx.fillText(heart, 90 + index * 330, 2260 - (index % 2) * 80);
   });
+
   ctx.restore();
 
-  // Header
   ctx.textAlign = 'center';
   ctx.fillStyle = '#5a2a35';
   ctx.font = 'bold 84px Georgia, serif';
   ctx.fillText('Viktor & Jericka', 800, 135);
+
   ctx.font = '38px Inter, Arial, sans-serif';
   ctx.fillStyle = '#8b4a5a';
   ctx.fillText('Made with love, even from far away', 800, 195);
@@ -112,9 +164,10 @@ export async function generateCollage({ photos, customMessage, layout = 'columns
   const cardHeight = 560;
   const radius = 36;
 
-  loaded.forEach(({ image }, index) => {
+  loadedImages.forEach((image, index) => {
     const row = Math.floor(index / 2);
     const col = index % 2;
+
     const x = marginX + col * (cardWidth + gap);
     const y = top + row * (cardHeight + gap);
 
@@ -141,7 +194,6 @@ export async function generateCollage({ photos, customMessage, layout = 'columns
     ctx.restore();
   });
 
-  // Labels
   ctx.fillStyle = '#7b3d4b';
   ctx.font = 'bold 34px Inter, Arial, sans-serif';
   ctx.fillText('Viktor', 120 + cardWidth / 2, 2225);
@@ -151,11 +203,15 @@ export async function generateCollage({ photos, customMessage, layout = 'columns
   ctx.fillStyle = '#9c6672';
   ctx.fillText(formatDate(), 800, 2290);
 
-  loaded.forEach(({ objectUrl }) => URL.revokeObjectURL(objectUrl));
-
   const blob = await new Promise((resolve, reject) => {
     canvas.toBlob(
-      (result) => (result ? resolve(result) : reject(new Error('Could not export collage.'))),
+      (result) => {
+        if (result) {
+          resolve(result);
+        } else {
+          reject(new Error('Could not export collage.'));
+        }
+      },
       'image/png',
       1
     );
