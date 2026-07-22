@@ -554,12 +554,22 @@ function renderCollageSection(canGenerate) {
         <h2>Your photobooth collage is ready</h2>
         <p>Generate a high resolution PNG from all 6 photos.</p>
       </div>
-      <div class="layout-control">
-        <label class="field-label" for="layoutSelect">Layout</label>
-        <select id="layoutSelect" class="text-input">
-          <option value="grid">Grid — Viktor left, Jericka right</option>
-          <option value="strip">Classic photobooth strip</option>
-        </select>
+      <div class="layout-controls">
+        <div class="layout-control">
+          <label class="field-label" for="layoutSelect">Layout</label>
+          <select id="layoutSelect" class="text-input">
+            <option value="grid">Grid — Viktor left, Jericka right</option>
+            <option value="strip">Classic photobooth strip</option>
+            <option value="hero">Hero — one big photo + rest</option>
+          </select>
+        </div>
+        <div class="layout-control">
+          <label class="field-label" for="resolutionSelect">Quality</label>
+          <select id="resolutionSelect" class="text-input">
+            <option value="1">Standard</option>
+            <option value="2">Print quality (2×)</option>
+          </select>
+        </div>
       </div>
     </div>
     ${preview}
@@ -588,6 +598,7 @@ function renderCollageSection(canGenerate) {
 async function generateCollageFlow() {
   const button = document.querySelector('#generateCollageBtn');
   const layout = document.querySelector('#layoutSelect')?.value || 'grid';
+  const scale = Number(document.querySelector('#resolutionSelect')?.value) || 1;
   button.disabled = true;
   button.textContent = 'Generating...';
 
@@ -598,7 +609,8 @@ async function generateCollageFlow() {
       photos: state.photos,
       customMessage: state.room?.customMessage || state.customMessage,
       layout,
-      roomId: state.roomId
+      roomId: state.roomId,
+      scale
     });
 
     state.collageBlob = result.blob;

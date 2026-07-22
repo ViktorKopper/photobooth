@@ -527,8 +527,14 @@ p {
   align-items: end;
 }
 
+.layout-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .layout-control {
-  width: min(300px, 100%);
+  width: min(220px, 100%);
 }
 
 .collage-preview {
