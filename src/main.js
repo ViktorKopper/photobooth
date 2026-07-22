@@ -79,7 +79,7 @@ function renderFatalError(error) {
   setApp(`
     <main class="shell center-shell">
       <section class="card hero-card fade-in">
-        <div class="heart-badge">!</div>
+        <div class="heart-badge error-badge">!</div>
         <h1>Something went wrong</h1>
         <p>${escapeHtml(error.message || 'Unknown error')}</p>
         <button class="primary" id="restartBtn">Restart</button>
@@ -87,6 +87,62 @@ function renderFatalError(error) {
     </main>
   `);
   document.querySelector('#restartBtn').addEventListener('click', () => window.location.href = window.location.pathname);
+}
+
+function showToast(message) {
+  let toast = document.querySelector('#toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'toast';
+    toast.className = 'toast';
+    document.body.appendChild(toast);
+  }
+
+  toast.textContent = message;
+  toast.classList.remove('toast-visible');
+  // Force reflow so retriggering the class restarts the animation
+  // even if a toast is already showing.
+  void toast.offsetWidth;
+  toast.classList.add('toast-visible');
+
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    toast.classList.remove('toast-visible');
+  }, 1800);
+}
+
+let audioContext = null;
+
+function playShutterSound() {
+  try {
+    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioContext.currentTime;
+
+    const click = audioContext.createOscillator();
+    const clickGain = audioContext.createGain();
+    click.type = 'square';
+    click.frequency.setValueAtTime(1400, now);
+    clickGain.gain.setValueAtTime(0.05, now);
+    clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+    click.connect(clickGain);
+    clickGain.connect(audioContext.destination);
+    click.start(now);
+    click.stop(now + 0.07);
+
+    const chime = audioContext.createOscillator();
+    const chimeGain = audioContext.createGain();
+    chime.type = 'sine';
+    chime.frequency.setValueAtTime(880, now + 0.05);
+    chimeGain.gain.setValueAtTime(0.0001, now + 0.05);
+    chimeGain.gain.exponentialRampToValueAtTime(0.06, now + 0.09);
+    chimeGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
+    chime.connect(chimeGain);
+    chimeGain.connect(audioContext.destination);
+    chime.start(now + 0.05);
+    chime.stop(now + 0.34);
+  } catch {
+    // Audio is a nice-to-have; never block capture on it.
+  }
 }
 
 function renderLanding() {
@@ -345,6 +401,22 @@ async function startCurrentCamera() {
   }
 }
 
+function buildThumbRow(role) {
+  const ownerPhotos = state.photos
+    .filter((photo) => photo.owner === role)
+    .reduce((map, photo) => map.set(photo.index, photo), new Map());
+
+  const slots = [1, 2, 3].map((index) => {
+    const photo = ownerPhotos.get(index);
+    if (photo?.downloadUrl) {
+      return `<div class="thumb-slot filled"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" /></div>`;
+    }
+    return `<div class="thumb-slot empty">${index}</div>`;
+  });
+
+  return `<div class="thumb-row thumb-row-${role}">${slots.join('')}</div>`;
+}
+
 function updateRoomView() {
   if (!state.room) return;
 
@@ -357,9 +429,11 @@ function updateRoomView() {
   if (progressPanel) {
     progressPanel.innerHTML = `
       <div class="progress-row"><span>Viktor</span><strong>${viktorCount}/3</strong></div>
-      <div class="meter"><span style="width:${(viktorCount / 3) * 100}%"></span></div>
+      <div class="meter meter-viktor"><span style="width:${(viktorCount / 3) * 100}%"></span></div>
+      ${buildThumbRow('viktor')}
       <div class="progress-row"><span>Jericka</span><strong>${jerickaCount}/3</strong></div>
-      <div class="meter"><span style="width:${(jerickaCount / 3) * 100}%"></span></div>
+      <div class="meter meter-jericka"><span style="width:${(jerickaCount / 3) * 100}%"></span></div>
+      ${buildThumbRow('jericka')}
       <div class="total-progress">Total memory progress: <strong>${total}/6</strong></div>
     `;
   }
@@ -402,12 +476,17 @@ async function takePhotoFlow() {
 
   for (const number of [3, 2, 1]) {
     countdown.textContent = number;
+    countdown.classList.remove('pulse');
+    void countdown.offsetWidth;
+    countdown.classList.add('pulse');
     await sleep(750);
   }
 
   countdown.textContent = '♡';
+  playShutterSound();
   await sleep(260);
   countdown.classList.add('hidden');
+  countdown.classList.remove('pulse');
 
   try {
     state.pendingCapture = await capturePhoto(video, state.facingMode);
@@ -445,6 +524,7 @@ async function confirmPhoto() {
       blob: state.pendingCapture.blob
     });
     retakePhoto();
+    showToast('Saved ♡');
   } catch (error) {
     alert(error.message || 'Upload failed.');
   } finally {
@@ -477,8 +557,8 @@ function renderCollageSection(canGenerate) {
       <div class="layout-control">
         <label class="field-label" for="layoutSelect">Layout</label>
         <select id="layoutSelect" class="text-input">
-          <option value="columns">Viktor left, Jericka right</option>
-          <option value="paired">Paired rows</option>
+          <option value="grid">Grid — Viktor left, Jericka right</option>
+          <option value="strip">Classic photobooth strip</option>
         </select>
       </div>
     </div>
@@ -486,7 +566,12 @@ function renderCollageSection(canGenerate) {
     <div class="action-row">
       <button class="primary" id="generateCollageBtn">Generate collage</button>
       <button class="secondary" id="downloadCollageBtn" ${state.collageBlob ? '' : 'disabled'}>Download PNG</button>
-      <button class="danger" id="deleteSessionBtn">Delete booth</button>
+    </div>
+
+    <div class="danger-zone">
+      <p class="danger-zone-label">Danger zone</p>
+      <p class="danger-zone-hint">Permanently deletes this room and every uploaded photo for both of you.</p>
+      <button class="danger small" id="deleteSessionBtn">Delete booth</button>
     </div>
   `;
 
@@ -502,7 +587,7 @@ function renderCollageSection(canGenerate) {
 
 async function generateCollageFlow() {
   const button = document.querySelector('#generateCollageBtn');
-  const layout = document.querySelector('#layoutSelect')?.value || 'columns';
+  const layout = document.querySelector('#layoutSelect')?.value || 'grid';
   button.disabled = true;
   button.textContent = 'Generating...';
 
@@ -512,7 +597,8 @@ async function generateCollageFlow() {
     const result = await generateCollage({
       photos: state.photos,
       customMessage: state.room?.customMessage || state.customMessage,
-      layout
+      layout,
+      roomId: state.roomId
     });
 
     state.collageBlob = result.blob;

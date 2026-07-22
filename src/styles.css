@@ -14,6 +14,10 @@
   --cream: #fffdf8;
   --border: rgba(217, 77, 114, 0.18);
   --shadow: 0 28px 80px rgba(130, 52, 74, 0.18);
+  --viktor: #3f7fb8;
+  --viktor-dark: #2a5a86;
+  --jericka: #c7345a;
+  --jericka-dark: #9b2948;
 }
 
 * {
@@ -61,6 +65,13 @@ button:disabled {
   opacity: 0.58;
 }
 
+button:focus-visible,
+.text-input:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(217, 77, 114, 0.55);
+  outline-offset: 2px;
+}
+
 .shell {
   position: relative;
   z-index: 1;
@@ -71,6 +82,7 @@ button:disabled {
 
 .center-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
 }
@@ -100,6 +112,11 @@ button:disabled {
   background: linear-gradient(135deg, #f28aaa, #c7345a);
   box-shadow: 0 16px 38px rgba(199, 52, 90, 0.28);
   font: 44px Georgia, serif;
+}
+
+.error-badge {
+  background: linear-gradient(135deg, #f2a25a, #b8492a);
+  box-shadow: 0 16px 38px rgba(184, 73, 42, 0.3);
 }
 
 .eyebrow {
@@ -266,6 +283,22 @@ p {
   font: 42px Georgia, serif;
 }
 
+.role-card[data-role='viktor'] span {
+  background: linear-gradient(135deg, #6fa8d8, var(--viktor-dark));
+}
+
+.role-card[data-role='jericka'] span {
+  background: linear-gradient(135deg, #f28aaa, var(--jericka-dark));
+}
+
+.role-card[data-role='viktor']:hover {
+  border-color: rgba(63, 127, 184, 0.35);
+}
+
+.role-card[data-role='jericka']:hover {
+  border-color: rgba(199, 52, 90, 0.35);
+}
+
 .booth-shell {
   min-height: 100vh;
 }
@@ -331,6 +364,65 @@ p {
   border-radius: inherit;
   background: linear-gradient(90deg, #f28aaa, #c7345a);
   transition: width 260ms ease;
+}
+
+.meter-viktor span {
+  background: linear-gradient(90deg, #7cb0e0, var(--viktor-dark));
+}
+
+.meter-jericka span {
+  background: linear-gradient(90deg, #f28aaa, var(--jericka-dark));
+}
+
+.thumb-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+
+.thumb-slot {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  overflow: hidden;
+  font-weight: 800;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px dashed var(--border);
+}
+
+.thumb-slot.filled {
+  border-style: solid;
+  border-color: transparent;
+  animation: popIn 320ms ease both;
+}
+
+.thumb-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-row-viktor .thumb-slot.filled {
+  box-shadow: 0 0 0 2px var(--viktor);
+}
+
+.thumb-row-jericka .thumb-slot.filled {
+  box-shadow: 0 0 0 2px var(--jericka);
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .soft-message {
@@ -407,6 +499,27 @@ p {
   margin-top: 20px;
 }
 
+.danger-zone {
+  margin-top: 34px;
+  padding-top: 18px;
+  border-top: 1px dashed rgba(142, 31, 53, 0.25);
+  text-align: center;
+}
+
+.danger-zone-label {
+  margin: 0 0 4px;
+  color: #8e1f35;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.danger-zone-hint {
+  margin: 0 0 14px;
+  font-size: 0.86rem;
+}
+
 .collage-header {
   display: flex;
   justify-content: space-between;
@@ -444,6 +557,32 @@ p {
   animation: fadeIn 360ms ease both;
 }
 
+.countdown.pulse {
+  animation: countdownPulse 750ms ease;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 20;
+  padding: 12px 22px;
+  border-radius: 999px;
+  color: white;
+  font-weight: 800;
+  background: linear-gradient(135deg, #e85d85, #b82449);
+  box-shadow: 0 16px 38px rgba(184, 36, 73, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 12px);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.toast-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -458,6 +597,21 @@ p {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes countdownPulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.4;
+  }
+  35% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 
