@@ -66,22 +66,36 @@ export async function capturePhoto(videoElement, facingMode = 'user', cssFilter 
     throw new Error('Camera is not ready yet. Wait a second and try again.');
   }
 
+  // Pass 1: draw the raw video frame onto an off-screen canvas, unfiltered.
+  // Some mobile browsers silently skip a canvas 2D `filter` when the
+  // drawImage() source is a live <video> element (a GPU compositing
+  // shortcut that doesn't apply to canvas/image sources) — the filter
+  // looked fine in the live preview but never made it into the captured
+  // frame. Drawing raw first and filtering in a second canvas-to-canvas
+  // pass below sidesteps that and bakes the effect in reliably.
+  const rawCanvas = document.createElement('canvas');
+  rawCanvas.width = width;
+  rawCanvas.height = height;
+  const rawContext = rawCanvas.getContext('2d');
+
+  if (facingMode === 'user') {
+    rawContext.translate(width, 0);
+    rawContext.scale(-1, 1);
+  }
+
+  rawContext.drawImage(videoElement, 0, 0, width, height);
+
+  // Pass 2: draw that canvas frame onto the final canvas with the filter
+  // applied, so the uploaded photo matches what was shown on screen without
+  // needing to store filter metadata separately or re-apply it later in
+  // the collage.
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
 
   const context = canvas.getContext('2d');
-
-  if (facingMode === 'user') {
-    context.translate(width, 0);
-    context.scale(-1, 1);
-  }
-
-  // Bake the chosen live-preview filter directly into the captured frame, so
-  // the uploaded photo matches what was shown on screen without needing to
-  // store filter metadata separately or re-apply it later in the collage.
   context.filter = cssFilter || 'none';
-  context.drawImage(videoElement, 0, 0, width, height);
+  context.drawImage(rawCanvas, 0, 0);
   context.filter = 'none';
 
   return new Promise((resolve, reject) => {
