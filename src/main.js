@@ -18,9 +18,18 @@ import {
   otherRole,
   roomLink,
   ROLES,
+  sanitizeCaption,
   sanitizeCollageMessage,
   sleep
 } from './utils.js';
+
+const FILTERS = [
+  { id: 'none', label: 'Original', css: 'none' },
+  { id: 'warm', label: 'Teplý', css: 'sepia(0.25) saturate(1.3) brightness(1.05)' },
+  { id: 'bw', label: 'Čiernobiely', css: 'grayscale(1) contrast(1.1)' },
+  { id: 'vintage', label: 'Vintage', css: 'sepia(0.35) contrast(0.9) brightness(1.05) saturate(0.85)' },
+  { id: 'cool', label: 'Studený', css: 'hue-rotate(-8deg) saturate(1.15) brightness(1.02)' }
+];
 
 const app = document.querySelector('#app');
 
@@ -32,6 +41,7 @@ const state = {
   photos: [],
   pendingCapture: null,
   facingMode: 'user',
+  activeFilter: 'none',
   customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
   collageBlob: null,
   collagePreviewUrl: null,
@@ -39,6 +49,10 @@ const state = {
   unsubscribePhotos: null,
   cameraStarted: false
 };
+
+function activeFilterCss() {
+  return FILTERS.find((filter) => filter.id === state.activeFilter)?.css || 'none';
+}
 
 bootstrap();
 
@@ -95,6 +109,7 @@ function showToast(message) {
     toast = document.createElement('div');
     toast.id = 'toast';
     toast.className = 'toast';
+    toast.setAttribute('aria-live', 'polite');
     document.body.appendChild(toast);
   }
 
@@ -327,12 +342,25 @@ function renderRoomShell() {
         <section class="card camera-card">
           <div class="camera-wrap">
             <video id="cameraPreview" class="camera-preview" autoplay muted playsinline></video>
-            <div id="countdown" class="countdown hidden"></div>
+            <div id="countdown" class="countdown hidden" aria-live="polite"></div>
             <div id="cameraError" class="camera-error hidden"></div>
           </div>
 
+          <div id="filterRow" class="filter-row">${buildFilterRow()}</div>
+
           <div id="previewPanel" class="preview-panel hidden">
-            <img id="photoPreview" alt="Captured preview" />
+            <div class="polaroid-preview">
+              <img id="photoPreview" alt="Captured preview" />
+              <label class="visually-hidden" for="captionInput">Popisok k fotke (nepovinné)</label>
+              <input
+                id="captionInput"
+                class="caption-input"
+                style="color:${state.role === 'viktor' ? '#2a5a86' : '#9b2948'}"
+                maxlength="36"
+                placeholder="napíš odkaz k tejto chvíli..."
+                autocomplete="off"
+              />
+            </div>
             <div class="action-row">
               <button class="secondary" id="retakeBtn">Retake</button>
               <button class="primary" id="confirmBtn">Confirm photo</button>
@@ -371,9 +399,33 @@ function renderRoomShell() {
     await startCurrentCamera();
   });
 
+  document.querySelectorAll('.filter-swatch').forEach((button) => {
+    button.addEventListener('click', () => selectFilter(button.dataset.filterId));
+  });
+
   document.querySelector('#takePhotoBtn').addEventListener('click', takePhotoFlow);
   document.querySelector('#retakeBtn').addEventListener('click', retakePhoto);
   document.querySelector('#confirmBtn').addEventListener('click', confirmPhoto);
+
+  document.querySelector('#captionInput').addEventListener('input', (event) => {
+    if (!state.pendingCapture) return;
+    state.pendingCapture.caption = sanitizeCaption(event.target.value);
+  });
+}
+
+function selectFilter(filterId) {
+  if (!FILTERS.some((filter) => filter.id === filterId)) return;
+
+  state.activeFilter = filterId;
+
+  const video = document.querySelector('#cameraPreview');
+  if (video) video.style.filter = activeFilterCss();
+
+  // Toggle the active swatch in place instead of a full re-render, so the
+  // live camera feed never flickers when switching filters.
+  document.querySelectorAll('.filter-swatch').forEach((button) => {
+    button.classList.toggle('active', button.dataset.filterId === filterId);
+  });
 }
 
 async function startCurrentCamera() {
@@ -390,6 +442,7 @@ async function startCurrentCamera() {
 
     state.cameraStarted = true;
     video.classList.toggle('mirrored', state.facingMode === 'user');
+    video.style.filter = activeFilterCss();
 
     updateRoomView();
   } catch (error) {
@@ -399,6 +452,20 @@ async function startCurrentCamera() {
 
     updateRoomView();
   }
+}
+
+function buildFilterRow() {
+  return FILTERS.map(
+    (filter) => `
+      <button
+        type="button"
+        class="filter-swatch${filter.id === state.activeFilter ? ' active' : ''}"
+        data-filter-id="${filter.id}"
+        style="filter:${filter.css}"
+        title="${escapeAttr(filter.label)}"
+      >${escapeHtml(filter.label.slice(0, 2))}</button>
+    `
+  ).join('');
 }
 
 function buildThumbRow(role) {
@@ -489,10 +556,14 @@ async function takePhotoFlow() {
   countdown.classList.remove('pulse');
 
   try {
-    state.pendingCapture = await capturePhoto(video, state.facingMode);
+    state.pendingCapture = await capturePhoto(video, state.facingMode, activeFilterCss());
+    state.pendingCapture.caption = '';
     document.querySelector('#photoPreview').src = state.pendingCapture.previewUrl;
+    const captionInput = document.querySelector('#captionInput');
+    captionInput.value = '';
     document.querySelector('#previewPanel').classList.remove('hidden');
     document.querySelector('#cameraActions').classList.add('hidden');
+    captionInput.focus();
   } catch (error) {
     alert(error.message);
   } finally {
@@ -503,6 +574,7 @@ async function takePhotoFlow() {
 function retakePhoto() {
   if (state.pendingCapture?.previewUrl) URL.revokeObjectURL(state.pendingCapture.previewUrl);
   state.pendingCapture = null;
+  document.querySelector('#captionInput').value = '';
   document.querySelector('#previewPanel').classList.add('hidden');
   document.querySelector('#cameraActions').classList.remove('hidden');
 }
@@ -521,7 +593,8 @@ async function confirmPhoto() {
       uid: state.user.uid,
       role: state.role,
       index: myCount + 1,
-      blob: state.pendingCapture.blob
+      blob: state.pendingCapture.blob,
+      caption: sanitizeCaption(state.pendingCapture.caption)
     });
     retakePhoto();
     showToast('Saved ♡');
@@ -557,18 +630,27 @@ function renderCollageSection(canGenerate) {
       <div class="layout-controls">
         <div class="layout-control">
           <label class="field-label" for="layoutSelect">Layout</label>
-          <select id="layoutSelect" class="text-input">
+          <select id="layoutSelect" class="text-input visually-hidden">
             <option value="grid">Grid — Viktor left, Jericka right</option>
             <option value="strip">Classic photobooth strip</option>
             <option value="hero">Hero — one big photo + rest</option>
           </select>
+          <div class="segmented" data-controls="layoutSelect">
+            <button type="button" class="segmented-option active" data-value="grid">Grid</button>
+            <button type="button" class="segmented-option" data-value="strip">Strip</button>
+            <button type="button" class="segmented-option" data-value="hero">Hero</button>
+          </div>
         </div>
         <div class="layout-control">
           <label class="field-label" for="resolutionSelect">Quality</label>
-          <select id="resolutionSelect" class="text-input">
+          <select id="resolutionSelect" class="text-input visually-hidden">
             <option value="1">Standard</option>
             <option value="2">Print quality (2×)</option>
           </select>
+          <div class="segmented" data-controls="resolutionSelect">
+            <button type="button" class="segmented-option active" data-value="1">Standard</button>
+            <button type="button" class="segmented-option" data-value="2">Print (2×)</button>
+          </div>
         </div>
       </div>
     </div>
@@ -584,6 +666,18 @@ function renderCollageSection(canGenerate) {
       <button class="danger small" id="deleteSessionBtn">Delete booth</button>
     </div>
   `;
+
+  document.querySelectorAll('.segmented').forEach((group) => {
+    const select = document.querySelector(`#${group.dataset.controls}`);
+    group.querySelectorAll('.segmented-option').forEach((button) => {
+      button.addEventListener('click', () => {
+        select.value = button.dataset.value;
+        group.querySelectorAll('.segmented-option').forEach((option) => {
+          option.classList.toggle('active', option === button);
+        });
+      });
+    });
+  });
 
   document.querySelector('#generateCollageBtn').addEventListener('click', generateCollageFlow);
   document.querySelector('#downloadCollageBtn').addEventListener('click', () => {

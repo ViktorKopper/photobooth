@@ -58,7 +58,7 @@ export function stopCamera() {
   activeStream = null;
 }
 
-export async function capturePhoto(videoElement, facingMode = 'user') {
+export async function capturePhoto(videoElement, facingMode = 'user', cssFilter = 'none') {
   const width = videoElement.videoWidth;
   const height = videoElement.videoHeight;
 
@@ -77,7 +77,12 @@ export async function capturePhoto(videoElement, facingMode = 'user') {
     context.scale(-1, 1);
   }
 
+  // Bake the chosen live-preview filter directly into the captured frame, so
+  // the uploaded photo matches what was shown on screen without needing to
+  // store filter metadata separately or re-apply it later in the collage.
+  context.filter = cssFilter || 'none';
   context.drawImage(videoElement, 0, 0, width, height);
+  context.filter = 'none';
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(

@@ -13,7 +13,12 @@ const PALETTE = {
   cardShadow: 'rgba(88, 40, 50, 0.22)',
   connectorHeart: '#c7345a',
   viktorTape: '#3f7fb8',
-  jerickaTape: '#c7345a'
+  jerickaTape: '#c7345a',
+  // Darker "ink" tones (same hues as --viktor-dark / --jericka-dark in
+  // styles.css) so handwritten captions stay legible against the white
+  // polaroid border instead of blending into the lighter tape colors.
+  viktorInk: '#2a5a86',
+  jerickaInk: '#9b2948'
 };
 
 // Photo cards use a portrait-ish 4:5 ratio (not landscape) so mobile
@@ -39,8 +44,16 @@ function rotationFor(index) {
   return ROTATION_PATTERN[index % ROTATION_PATTERN.length];
 }
 
+// Captions get their own small, independent tilt (not tied to the photo's
+// rotation pattern) so they read as written on afterward, by hand.
+function captionRotationFor(index) {
+  return index % 2 === 0 ? -1.4 : 1.6;
+}
+
 const HANDWRITING_FONT = '"Caveat", cursive';
+const MARKER_FONT = '"Permanent Marker", cursive';
 let handwritingFontPromise = null;
+let markerFontPromise = null;
 
 function ensureHandwritingFont() {
   if (handwritingFontPromise) return handwritingFontPromise;
@@ -56,6 +69,25 @@ function ensureHandwritingFont() {
   })();
 
   return handwritingFontPromise;
+}
+
+// Per-photo captions use a separate "marker" font (thick, uneven felt-tip
+// strokes) so they read as a different, quicker gesture than the elegant
+// signature-style Caveat used for the header message.
+function ensureMarkerFont() {
+  if (markerFontPromise) return markerFontPromise;
+
+  markerFontPromise = (async () => {
+    if (typeof document === 'undefined' || !document.fonts) return false;
+    try {
+      await document.fonts.load(`400 32px ${MARKER_FONT}`);
+      return document.fonts.check(`400 32px ${MARKER_FONT}`);
+    } catch {
+      return false;
+    }
+  })();
+
+  return markerFontPromise;
 }
 
 function hashString(value) {
@@ -163,11 +195,59 @@ function drawWashiTape(ctx, centerX, cardTopY, cardWidth, color, angleDeg) {
   ctx.restore();
 }
 
+// Draws a short handwritten caption inside a card's bottom margin. Sized
+// down to fit before truncating, and given a small rotation independent of
+// the card's own tilt, as if it were jotted on afterward rather than
+// perfectly aligned with the photo.
+function drawCardCaption(ctx, text, x, y, width, height, innerY, innerHeight, color, extraRotationDeg, markerReady) {
+  if (!text) return;
+
+  const areaTop = innerY + innerHeight;
+  const areaBottom = y + height;
+  const centerX = x + width / 2;
+  const centerY = areaTop + (areaBottom - areaTop) / 2;
+  const maxWidth = width * 0.86;
+
+  const fontFamily = markerReady ? MARKER_FONT : 'Georgia, serif';
+  const fontWeight = markerReady ? '400' : 'italic 600';
+  let fontSize = clamp(width * 0.09, 22, 44);
+  const minFontSize = fontSize * 0.6;
+
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  ctx.rotate((extraRotationDeg * Math.PI) / 180);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+
+  ctx.font = `${fontWeight} ${Math.round(fontSize)}px ${fontFamily}`;
+  while (ctx.measureText(text).width > maxWidth && fontSize > minFontSize) {
+    fontSize -= 2;
+    ctx.font = `${fontWeight} ${Math.round(fontSize)}px ${fontFamily}`;
+  }
+
+  let displayText = text;
+  while (ctx.measureText(displayText).width > maxWidth && displayText.length > 4) {
+    displayText = `${displayText.slice(0, displayText.length - 2).trim()}…`;
+  }
+
+  ctx.fillText(displayText, 0, 0);
+  ctx.restore();
+}
+
 // Draws one photo as a small "instant photo" card: white polaroid-style
 // frame with a thicker caption margin at the bottom, a slight deterministic
 // tilt, and an optional washi-tape accent tinted to the photo's owner.
 function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
-  const { rotationDeg = 0, washiColor = null, washiAngle = -6 } = options;
+  const {
+    rotationDeg = 0,
+    washiColor = null,
+    washiAngle = -6,
+    caption = '',
+    captionColor = PALETTE.label,
+    captionRotationDeg = 0,
+    markerReady = false
+  } = options;
 
   const cx = x + width / 2;
   const cy = y + height / 2;
@@ -226,6 +306,8 @@ function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
   if (washiColor) {
     drawWashiTape(ctx, x + width / 2, y, width, washiColor, washiAngle);
   }
+
+  drawCardCaption(ctx, caption, x, y, width, height, innerY, innerHeight, captionColor, captionRotationDeg, markerReady);
 
   ctx.restore();
 }
@@ -474,19 +556,21 @@ async function loadImageFromUrl(url) {
   });
 }
 
+async function loadOwnerItems(photos) {
+  // Loaded sequentially, not all at once. This is more stable on mobile.
+  const items = [];
+  for (const photo of photos) {
+    const image = await loadImageFromUrl(photo.downloadUrl);
+    items.push({ image, caption: photo.caption || '' });
+  }
+  return items;
+}
+
 async function loadOwnerImages(viktorPhotos, jerickaPhotos) {
-  // Loaded sequentially, not all 6 at once. This is more stable on mobile.
-  const viktorImages = [];
-  for (const photo of viktorPhotos) {
-    viktorImages.push(await loadImageFromUrl(photo.downloadUrl));
-  }
+  const viktorItems = await loadOwnerItems(viktorPhotos);
+  const jerickaItems = await loadOwnerItems(jerickaPhotos);
 
-  const jerickaImages = [];
-  for (const photo of jerickaPhotos) {
-    jerickaImages.push(await loadImageFromUrl(photo.downloadUrl));
-  }
-
-  return { viktorImages, jerickaImages };
+  return { viktorItems, jerickaItems };
 }
 
 function computeGridDimensions() {
@@ -507,7 +591,7 @@ function computeGridDimensions() {
 
 function drawGridLayout(ctx, dims, payload) {
   const { width, marginX, gap, top, cardWidth, cardHeight, bottomLabelY, footerY } = dims;
-  const { viktorImages, jerickaImages, message, roomId, handwritingReady } = payload;
+  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady } = payload;
 
   drawPageBackground(ctx, dims.width, dims.height);
 
@@ -529,15 +613,23 @@ function drawGridLayout(ctx, dims, payload) {
     const viktorX = marginX;
     const jerickaX = marginX + cardWidth + gap;
 
-    drawPhotoCard(ctx, viktorImages[row], viktorX, y, cardWidth, cardHeight, 32, {
+    drawPhotoCard(ctx, viktorItems[row].image, viktorX, y, cardWidth, cardHeight, 32, {
       rotationDeg: rotationFor(row * 2),
       washiColor: PALETTE.viktorTape,
-      washiAngle: row % 2 === 0 ? -7 : 6
+      washiAngle: row % 2 === 0 ? -7 : 6,
+      caption: viktorItems[row].caption,
+      captionColor: PALETTE.viktorInk,
+      captionRotationDeg: captionRotationFor(row * 2),
+      markerReady
     });
-    drawPhotoCard(ctx, jerickaImages[row], jerickaX, y, cardWidth, cardHeight, 32, {
+    drawPhotoCard(ctx, jerickaItems[row].image, jerickaX, y, cardWidth, cardHeight, 32, {
       rotationDeg: rotationFor(row * 2 + 1),
       washiColor: PALETTE.jerickaTape,
-      washiAngle: row % 2 === 0 ? 7 : -6
+      washiAngle: row % 2 === 0 ? 7 : -6,
+      caption: jerickaItems[row].caption,
+      captionColor: PALETTE.jerickaInk,
+      captionRotationDeg: captionRotationFor(row * 2 + 1),
+      markerReady
     });
 
     // A small heart bridging each round's pair, reinforcing that these two
@@ -586,7 +678,7 @@ function computeStripDimensions() {
 
 function drawStripLayout(ctx, dims, payload) {
   const { width, height, headerHeight, framePadding, photoWidth, photoHeight, gap, roundGap, rounds, cardX, footerHeight } = dims;
-  const { viktorImages, jerickaImages, message, roomId, handwritingReady } = payload;
+  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady } = payload;
 
   drawPageBackground(ctx, width, height);
 
@@ -616,18 +708,26 @@ function drawStripLayout(ctx, dims, payload) {
   let y = headerHeight;
 
   for (let round = 0; round < rounds; round += 1) {
-    drawPhotoCard(ctx, viktorImages[round], cardX, y, photoWidth, photoHeight, 24, {
+    drawPhotoCard(ctx, viktorItems[round].image, cardX, y, photoWidth, photoHeight, 24, {
       rotationDeg: rotationFor(round * 2) * 0.45,
       washiColor: PALETTE.viktorTape,
-      washiAngle: -6
+      washiAngle: -6,
+      caption: viktorItems[round].caption,
+      captionColor: PALETTE.viktorInk,
+      captionRotationDeg: captionRotationFor(round * 2),
+      markerReady
     });
     labelCorner(ctx, cardX, y, 'V', PALETTE.viktorTape, 18);
     y += photoHeight + gap;
 
-    drawPhotoCard(ctx, jerickaImages[round], cardX, y, photoWidth, photoHeight, 24, {
+    drawPhotoCard(ctx, jerickaItems[round].image, cardX, y, photoWidth, photoHeight, 24, {
       rotationDeg: rotationFor(round * 2 + 1) * 0.45,
       washiColor: PALETTE.jerickaTape,
-      washiAngle: 6
+      washiAngle: 6,
+      caption: jerickaItems[round].caption,
+      captionColor: PALETTE.jerickaInk,
+      captionRotationDeg: captionRotationFor(round * 2 + 1),
+      markerReady
     });
     labelCorner(ctx, cardX, y, 'J', PALETTE.jerickaTape, 18);
 
@@ -681,7 +781,7 @@ function computeHeroDimensions() {
 
 function drawHeroLayout(ctx, dims, payload) {
   const { width, height, heroSize, heroX, heroY, smallWidth, smallHeight, smallGap, marginX, smallY } = dims;
-  const { viktorImages, jerickaImages, message, roomId, handwritingReady } = payload;
+  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady } = payload;
 
   drawPageBackground(ctx, width, height);
 
@@ -699,29 +799,35 @@ function drawHeroLayout(ctx, dims, payload) {
   });
 
   const heroOwner = pickHeroOwner(roomId);
-  const heroImages = heroOwner === 'viktor' ? viktorImages : jerickaImages;
-  const otherImages = heroOwner === 'viktor' ? jerickaImages : viktorImages;
+  const heroItems = heroOwner === 'viktor' ? viktorItems : jerickaItems;
+  const otherItems = heroOwner === 'viktor' ? jerickaItems : viktorItems;
   const otherOwner = heroOwner === 'viktor' ? 'jericka' : 'viktor';
   const heroLabel = heroOwner === 'viktor' ? 'V' : 'J';
   const otherLabel = otherOwner === 'viktor' ? 'V' : 'J';
   const heroColor = heroOwner === 'viktor' ? PALETTE.viktorTape : PALETTE.jerickaTape;
   const otherColor = otherOwner === 'viktor' ? PALETTE.viktorTape : PALETTE.jerickaTape;
+  const heroInk = heroOwner === 'viktor' ? PALETTE.viktorInk : PALETTE.jerickaInk;
+  const otherInk = otherOwner === 'viktor' ? PALETTE.viktorInk : PALETTE.jerickaInk;
 
-  drawPhotoCard(ctx, heroImages[2], heroX, heroY, heroSize, heroSize, 40, {
+  drawPhotoCard(ctx, heroItems[2].image, heroX, heroY, heroSize, heroSize, 40, {
     rotationDeg: 0,
     washiColor: heroColor,
-    washiAngle: -6
+    washiAngle: -6,
+    caption: heroItems[2].caption,
+    captionColor: heroInk,
+    captionRotationDeg: captionRotationFor(2),
+    markerReady
   });
   labelCorner(ctx, heroX, heroY, heroLabel, heroColor, 30);
 
   drawHeartAt(ctx, width / 2, heroY + heroSize + 28, 32, PALETTE.connectorHeart);
 
   const smallItems = [
-    { image: otherImages[0], label: otherLabel, color: otherColor },
-    { image: otherImages[1], label: otherLabel, color: otherColor },
-    { image: otherImages[2], label: otherLabel, color: otherColor },
-    { image: heroImages[0], label: heroLabel, color: heroColor },
-    { image: heroImages[1], label: heroLabel, color: heroColor }
+    { image: otherItems[0].image, caption: otherItems[0].caption, label: otherLabel, color: otherColor, ink: otherInk },
+    { image: otherItems[1].image, caption: otherItems[1].caption, label: otherLabel, color: otherColor, ink: otherInk },
+    { image: otherItems[2].image, caption: otherItems[2].caption, label: otherLabel, color: otherColor, ink: otherInk },
+    { image: heroItems[0].image, caption: heroItems[0].caption, label: heroLabel, color: heroColor, ink: heroInk },
+    { image: heroItems[1].image, caption: heroItems[1].caption, label: heroLabel, color: heroColor, ink: heroInk }
   ];
 
   smallItems.forEach((item, index) => {
@@ -729,7 +835,11 @@ function drawHeroLayout(ctx, dims, payload) {
     drawPhotoCard(ctx, item.image, x, smallY, smallWidth, smallHeight, 20, {
       rotationDeg: rotationFor(index) * 0.8,
       washiColor: item.color,
-      washiAngle: index % 2 === 0 ? -7 : 7
+      washiAngle: index % 2 === 0 ? -7 : 7,
+      caption: item.caption,
+      captionColor: item.ink,
+      captionRotationDeg: captionRotationFor(index),
+      markerReady
     });
     labelCorner(ctx, x, smallY, item.label, item.color, 16);
   });
@@ -745,11 +855,12 @@ function drawHeroLayout(ctx, dims, payload) {
 
 export async function generateCollage({ photos, customMessage, layout = 'grid', roomId = '', scale = 1 }) {
   const { viktor, jericka } = splitPhotosByOwner(photos);
-  const { viktorImages, jerickaImages } = await loadOwnerImages(viktor, jericka);
+  const { viktorItems, jerickaItems } = await loadOwnerImages(viktor, jericka);
   const handwritingReady = await ensureHandwritingFont();
+  const markerReady = await ensureMarkerFont();
 
   const message = customMessage || 'Our little photobooth memory';
-  const payload = { viktorImages, jerickaImages, message, roomId, handwritingReady };
+  const payload = { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady };
 
   let dims;
   let drawFn;

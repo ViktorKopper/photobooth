@@ -54,6 +54,12 @@ export function sanitizeCollageMessage(value) {
   return value.trim().slice(0, 80) || 'Our little photobooth memory';
 }
 
+// Unlike sanitizeCollageMessage, a caption has no fallback text — an empty
+// caption is a perfectly valid state (not every photo needs a note).
+export function sanitizeCaption(value) {
+  return String(value ?? '').trim().slice(0, 36);
+}
+
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

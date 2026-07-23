@@ -124,7 +124,7 @@ export function watchPhotos(roomId, onChange, onError) {
   );
 }
 
-export async function uploadPhoto({ roomId, uid, role, index, blob }) {
+export async function uploadPhoto({ roomId, uid, role, index, blob, caption = '' }) {
   const roomRef = doc(db, 'rooms', roomId);
   const roomSnapshot = await getDoc(roomRef);
 
@@ -166,7 +166,8 @@ export async function uploadPhoto({ roomId, uid, role, index, blob }) {
     downloadUrl,
     createdAt: serverTimestamp(),
     width: null,
-    height: null
+    height: null,
+    caption: caption || ''
   });
 
   await updateDoc(roomRef, {
