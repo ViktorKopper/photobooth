@@ -49,7 +49,19 @@ function activeFilterCss() {
   return cssFromOps(findFilter(state.activeFilter).ops);
 }
 
+registerServiceWorker();
 bootstrap();
+
+// Registers the PWA service worker so the booth can be installed to a
+// phone's home screen and opened like a native app. Never blocks or
+// affects the actual app if it fails — it's a pure enhancement.
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
+  });
+}
 
 async function bootstrap() {
   renderLoading('Preparing your private photobooth...');
