@@ -428,7 +428,7 @@ function drawFooter(ctx, { centerX, y, roomId, dayCount }) {
 
   const parts = [];
   if (roomId) parts.push(`Booth ${roomId}`);
-  if (dayCount) parts.push(`Deň ${dayCount} spolu`);
+  if (dayCount) parts.push(`Day ${dayCount} together`);
   parts.push(formatDate());
 
   ctx.fillText(parts.join('  ·  '), centerX, y);

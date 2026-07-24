@@ -13,7 +13,7 @@ export const FILTERS = [
   { id: 'none', label: 'Original', ops: [] },
   {
     id: 'warm',
-    label: 'Teplý',
+    label: 'Warm',
     ops: [
       { type: 'sepia', amount: 0.25 },
       { type: 'saturate', amount: 1.3 },
@@ -22,7 +22,7 @@ export const FILTERS = [
   },
   {
     id: 'bw',
-    label: 'Čiernobiely',
+    label: 'Mono',
     ops: [
       { type: 'grayscale', amount: 1 },
       { type: 'contrast', amount: 1.1 }
@@ -40,7 +40,7 @@ export const FILTERS = [
   },
   {
     id: 'cool',
-    label: 'Studený',
+    label: 'Cool',
     ops: [
       { type: 'hueRotate', amount: -8 },
       { type: 'saturate', amount: 1.15 },

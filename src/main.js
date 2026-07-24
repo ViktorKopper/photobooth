@@ -67,16 +67,13 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-// Slovak plural rules for "day": 1 = deň, 2-4 = dni, 5+ (and 0) = dní.
-function formatDaysSk(count) {
-  if (count === 1) return `${count} deň`;
-  if (count >= 2 && count <= 4) return `${count} dni`;
-  return `${count} dní`;
+function formatDays(count) {
+  return count === 1 ? '1 day' : `${count} days`;
 }
 
 function anniversaryPreviewText() {
   const count = daysTogether(state.anniversaryDate);
-  return count ? `💕 Spolu už ${formatDaysSk(count)}` : '';
+  return count ? `💕 Together for ${formatDays(count)}` : '';
 }
 
 registerServiceWorker();
@@ -212,7 +209,7 @@ function renderLanding() {
         <label class="field-label" for="messageInput">Collage message</label>
         <input id="messageInput" class="text-input" maxlength="80" value="${escapeAttr(state.customMessage)}" />
 
-        <label class="field-label" for="anniversaryInput">Spolu od (nepovinné)</label>
+        <label class="field-label" for="anniversaryInput">Together since (optional)</label>
         <input
           id="anniversaryInput"
           type="date"
@@ -385,7 +382,7 @@ function renderRoomShell() {
           <h2>Booth status</h2>
           <p>You are connected as <strong>${roleName}</strong>.</p>
           <p id="anniversaryLine" class="anniversary-line hidden"></p>
-          <button type="button" class="secondary small" id="notifyToggleBtn">🔔 Povoliť upozornenia</button>
+          <button type="button" class="secondary small" id="notifyToggleBtn">🔔 Enable notifications</button>
 
           <div class="share-box">
             <label class="field-label">Share link</label>
@@ -411,13 +408,13 @@ function renderRoomShell() {
           <div id="previewPanel" class="preview-panel hidden">
             <div class="polaroid-preview">
               <img id="photoPreview" alt="Captured preview" />
-              <label class="visually-hidden" for="captionInput">Popisok k fotke (nepovinné)</label>
+              <label class="visually-hidden" for="captionInput">Photo caption (optional)</label>
               <input
                 id="captionInput"
                 class="caption-input"
                 style="color:${state.role === 'viktor' ? '#2a5a86' : '#9b2948'}"
                 maxlength="36"
-                placeholder="napíš odkaz k tejto chvíli..."
+                placeholder="write a note for this moment..."
                 autocomplete="off"
               />
             </div>
@@ -429,7 +426,7 @@ function renderRoomShell() {
 
           <div id="cameraActions" class="action-row camera-actions">
             <button class="primary" id="takePhotoBtn">Take photo</button>
-            <button class="secondary" id="syncBtn">📸 Spolu teraz</button>
+            <button class="secondary" id="syncBtn">📸 Shoot together</button>
             <button class="secondary" id="switchCameraBtn">Switch camera</button>
           </div>
           <p id="syncStatus" class="sync-status hidden"></p>
@@ -441,17 +438,17 @@ function renderRoomShell() {
       <div id="captionEditorOverlay" class="caption-editor-overlay hidden">
         <div class="caption-editor-card">
           <img id="captionEditorImg" alt="Photo" />
-          <label class="visually-hidden" for="captionEditorInput">Uprav popisok k fotke</label>
+          <label class="visually-hidden" for="captionEditorInput">Edit photo caption</label>
           <input
             id="captionEditorInput"
             class="caption-input"
             maxlength="36"
-            placeholder="napíš odkaz k tejto chvíli..."
+            placeholder="write a note for this moment..."
             autocomplete="off"
           />
           <div class="action-row">
-            <button class="secondary" id="captionEditorCancelBtn">Zrušiť</button>
-            <button class="primary" id="captionEditorSaveBtn">Uložiť</button>
+            <button class="secondary" id="captionEditorCancelBtn">Cancel</button>
+            <button class="primary" id="captionEditorSaveBtn">Save</button>
           </div>
         </div>
       </div>
@@ -586,7 +583,7 @@ function buildThumbRow(role) {
       // Firestore rules, which only allow the owning role's uid to write
       // to that photo doc.
       const editButton = role === state.role
-        ? `<button type="button" class="thumb-edit-btn" data-role="${role}" data-index="${index}" title="Upraviť popisok" aria-label="Upraviť popisok fotky ${index}">✎</button>`
+        ? `<button type="button" class="thumb-edit-btn" data-role="${role}" data-index="${index}" title="Edit caption" aria-label="Edit caption for photo ${index}">✎</button>`
         : '';
 
       // Anyone can react to any photo — reacting is the viewer's own
@@ -596,15 +593,15 @@ function buildThumbRow(role) {
       const myReacted = Boolean(photo.reactions?.[state.role]);
 
       const partnerBadge = partnerReacted
-        ? `<span class="thumb-partner-heart" title="${escapeAttr(ROLES[partnerRole].name)} sa páči táto fotka">♥</span>`
+        ? `<span class="thumb-partner-heart" title="${escapeAttr(ROLES[partnerRole].name)} loves this photo">♥</span>`
         : '';
       const reactionButton = `<button
         type="button"
         class="thumb-reaction-btn${myReacted ? ' reacted' : ''}"
         data-role="${role}"
         data-index="${index}"
-        title="${myReacted ? 'Zrušiť reakciu' : 'Páči sa mi táto fotka'}"
-        aria-label="${myReacted ? 'Zrušiť reakciu na fotku' : 'Označiť fotku srdiečkom'} ${index}"
+        title="${myReacted ? 'Remove reaction' : 'Like this photo'}"
+        aria-label="${myReacted ? 'Remove reaction from photo' : 'Like photo'} ${index}"
       >${myReacted ? '♥' : '♡'}</button>`;
 
       return `<div class="thumb-slot filled"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}${partnerBadge}${reactionButton}</div>`;
@@ -621,7 +618,7 @@ function updateRoomView() {
   const anniversaryLine = document.querySelector('#anniversaryLine');
   if (anniversaryLine) {
     const count = daysTogether(state.room.anniversaryDate);
-    anniversaryLine.textContent = count ? `💕 Spolu už ${formatDaysSk(count)}` : '';
+    anniversaryLine.textContent = count ? `💕 Together for ${formatDays(count)}` : '';
     anniversaryLine.classList.toggle('hidden', !count);
   }
 
@@ -744,17 +741,17 @@ async function finishCaptureAfterCountdown() {
 
 async function requestSyncFlow() {
   const myCount = state.room?.participants?.[state.role]?.photoCount || 0;
-  if (myCount >= 3) return alert('Už máš všetky 3 fotky potvrdené.');
+  if (myCount >= 3) return alert('You already have all 3 photos confirmed.');
 
   const partnerRole = otherRole(state.role);
   if (!state.room?.participants?.[partnerRole]?.joined) {
-    return alert(`${ROLES[partnerRole].name} ešte nie je pripojený/á do tejto izby.`);
+    return alert(`${ROLES[partnerRole].name} hasn't joined this room yet.`);
   }
 
   try {
     await requestSyncCountdown({ roomId: state.roomId, uid: state.user.uid, role: state.role });
   } catch (error) {
-    alert(error.message || 'Nepodarilo sa spustiť spoločný odpočet.');
+    alert(error.message || 'Could not start the synced countdown.');
   }
 }
 
@@ -811,7 +808,7 @@ function scheduleSyncCountdown(targetAtMs) {
   const tickStatus = () => {
     const remaining = targetAtMs - 3000 - Date.now();
     if (remaining > 0) {
-      showSyncStatus(`Spoločný odpočet o ${Math.ceil((remaining + 3000) / 1000)} s...`);
+      showSyncStatus(`Synced countdown in ${Math.ceil((remaining + 3000) / 1000)}s...`);
       state.syncTimers.push(window.setTimeout(tickStatus, 500));
     }
   };
@@ -857,13 +854,13 @@ function updateNotifyToggleButton() {
   }
 
   if (Notification.permission === 'granted') {
-    button.textContent = '🔔 Upozornenia zapnuté';
+    button.textContent = '🔔 Notifications on';
     button.disabled = true;
   } else if (Notification.permission === 'denied') {
-    button.textContent = '🔕 Upozornenia zablokované v prehliadači';
+    button.textContent = '🔕 Notifications blocked in browser';
     button.disabled = true;
   } else {
-    button.textContent = '🔔 Povoliť upozornenia';
+    button.textContent = '🔔 Enable notifications';
     button.disabled = false;
   }
 }
@@ -883,8 +880,8 @@ async function notifyPartnerSyncRequest() {
 
   try {
     const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification('Spoločný odpočet spustený! 💕', {
-      body: `${ROLES[otherRole(state.role)].name} chce odfotiť spolu — priprav sa!`,
+    await registration.showNotification('Synced countdown started! 💕', {
+      body: `${ROLES[otherRole(state.role)].name} wants to shoot together — get ready!`,
       icon: `${import.meta.env.BASE_URL}icon-192.png`,
       badge: `${import.meta.env.BASE_URL}icon-192.png`,
       tag: 'photobooth-sync',
@@ -961,17 +958,17 @@ async function saveCaptionEditor() {
   const caption = sanitizeCaption(input.value);
 
   saveBtn.disabled = true;
-  saveBtn.textContent = 'Ukladám...';
+  saveBtn.textContent = 'Saving...';
 
   try {
     await updateCaption({ roomId: state.roomId, uid: state.user.uid, role, index, caption });
     closeCaptionEditor();
-    showToast('Popisok uložený ♡');
+    showToast('Caption saved ♡');
   } catch (error) {
-    alert(error.message || 'Nepodarilo sa uložiť popisok.');
+    alert(error.message || 'Could not save the caption.');
   } finally {
     saveBtn.disabled = false;
-    saveBtn.textContent = 'Uložiť';
+    saveBtn.textContent = 'Save';
   }
 }
 
@@ -1106,7 +1103,7 @@ async function shareCollageFlow() {
   const file = new File([state.collageBlob], `viktor-jericka-photobooth-${state.roomId}.png`, { type: 'image/png' });
 
   if (!navigator.canShare({ files: [file] })) {
-    alert('Zdieľanie súborov nie je v tomto prehliadači podporované. Skús Download PNG.');
+    alert('File sharing is not supported in this browser. Try Download PNG.');
     return;
   }
 
@@ -1124,7 +1121,7 @@ async function shareCollageFlow() {
     // AbortError just means the person closed the native share sheet
     // without picking anything — not an actual failure worth surfacing.
     if (error?.name !== 'AbortError') {
-      alert(error.message || 'Zdieľanie zlyhalo. Skús Download PNG.');
+      alert(error.message || 'Sharing failed. Try Download PNG.');
     }
   } finally {
     button.disabled = false;
