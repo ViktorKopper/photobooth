@@ -87,6 +87,7 @@ const state = {
   syncTimers: [],
   clockTimer: null,
   weather: { viktor: null, jericka: null },
+  weatherKey: '',
   weatherTimer: null
 };
 
@@ -981,9 +982,28 @@ function weatherChip(role) {
   return `<span class="distance-weather" title="${escapeAttr(weather.label)}">${weather.icon} ${escapeHtml(String(weather.temperature))}°</span>`;
 }
 
-// Weather is fetched per room entry and then only occasionally — conditions
-// move far slower than the clock, and this is a third-party API we don't
-// want to lean on. A failed lookup just leaves the chip out.
+// Signature of both stored cities. Weather only needs re-fetching when this
+// changes — which is also how the first fetch gets triggered, since the
+// room (and therefore any location at all) arrives asynchronously from
+// Firestore some time after the room screen is first rendered.
+function weatherKey() {
+  return ['viktor', 'jericka']
+    .map((role) => {
+      const location = state.room?.participants?.[role]?.location;
+      return isUsableLocation(location) ? `${location.latitude},${location.longitude}` : '-';
+    })
+    .join('|');
+}
+
+function maybeRefreshWeather() {
+  const key = weatherKey();
+  if (key === state.weatherKey) return;
+  state.weatherKey = key;
+  refreshWeather();
+}
+
+// Conditions move far slower than the clock, and this is a third-party API
+// we don't want to lean on. A failed lookup just leaves the chip out.
 async function refreshWeather() {
   const roles = ['viktor', 'jericka'];
 
@@ -1003,7 +1023,8 @@ async function refreshWeather() {
 
 function startWeatherTicker() {
   stopWeatherTicker();
-  refreshWeather();
+  // Periodic top-up only. The initial fetch is driven by maybeRefreshWeather()
+  // once the room snapshot actually delivers the cities.
   state.weatherTimer = window.setInterval(refreshWeather, 15 * 60 * 1000);
 }
 
@@ -1036,6 +1057,7 @@ function updateRoomView() {
     anniversaryLine.classList.toggle('hidden', !line);
   }
 
+  maybeRefreshWeather();
   renderDistancePanel();
 
   const viktorCount = state.room.participants?.viktor?.photoCount || 0;
@@ -1688,6 +1710,10 @@ function stopSubscriptions() {
   stopClockTicker();
   stopWeatherTicker();
   state.syncScheduledFor = null;
+  // Cleared so re-entering a room fetches fresh conditions rather than
+  // matching the stale key and skipping the lookup.
+  state.weatherKey = '';
+  state.weather = { viktor: null, jericka: null };
 }
 
 // Backfills the room with this browser's stored city if the room doesn't
