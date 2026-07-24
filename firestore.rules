@@ -54,6 +54,7 @@ service cloud.firestore {
         'title',
         'customMessage',
         'anniversaryDate',
+        'syncCountdown',
         'participants'
       ]);
     }
@@ -75,6 +76,16 @@ service cloud.firestore {
         // Optional — older rooms were created before this field existed.
         && (!('anniversaryDate' in data) || data.anniversaryDate == null || (
           data.anniversaryDate is string && data.anniversaryDate.size() <= 10
+        ))
+        // Optional — either participant may set this (to request a synced
+        // "shoot together" countdown) or clear it back to null once it's
+        // fired; validRoomShape doesn't care WHO changed it, canUpdateRoom
+        // below already restricts writes to the two known participants.
+        && (!('syncCountdown' in data) || data.syncCountdown == null || (
+          data.syncCountdown is map
+          && data.syncCountdown.keys().hasOnly(['requestedBy', 'requestedAt'])
+          && data.syncCountdown.requestedBy in ['viktor', 'jericka']
+          && data.syncCountdown.requestedAt is timestamp
         ));
     }
 

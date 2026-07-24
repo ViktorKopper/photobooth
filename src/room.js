@@ -232,6 +232,39 @@ export async function setReaction({ roomId, uid, myRole, ownerRole, index, value
   });
 }
 
+// Requests a synchronized "shoot together" moment. Both partners' clients
+// watch the room doc and, once they observe the server-resolved
+// `requestedAt` timestamp, count down to the SAME future instant
+// (requestedAt + a fixed lead time) — anchoring both devices to one
+// server-issued timestamp instead of trusting each phone's local clock to
+// agree on "now".
+export async function requestSyncCountdown({ roomId, uid, role }) {
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnapshot = await getDoc(roomRef);
+
+  if (!roomSnapshot.exists()) {
+    throw new Error('Room no longer exists.');
+  }
+
+  const participant = roomSnapshot.data().participants?.[role];
+
+  if (participant?.uid !== uid) {
+    throw new Error('This browser is not connected as this person in the room.');
+  }
+
+  await updateDoc(roomRef, {
+    syncCountdown: { requestedBy: role, requestedAt: serverTimestamp() },
+    updatedAt: serverTimestamp()
+  });
+}
+
+export async function clearSyncCountdown(roomId) {
+  await updateDoc(doc(db, 'rooms', roomId), {
+    syncCountdown: null,
+    updatedAt: serverTimestamp()
+  }).catch(() => undefined);
+}
+
 function bothCompletedAfterUpload(room, role, index) {
   const viktorCompleted = role === 'viktor'
     ? index >= 3

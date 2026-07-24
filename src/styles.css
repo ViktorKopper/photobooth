@@ -160,6 +160,10 @@ p {
   font-size: 0.92rem;
 }
 
+#notifyToggleBtn {
+  margin-top: 12px;
+}
+
 .field-label {
   display: block;
   margin: 16px 0 8px;
@@ -700,6 +704,15 @@ p {
 .camera-actions.disabled {
   pointer-events: none;
   opacity: 0.5;
+}
+
+.sync-status {
+  margin: 10px 0 0;
+  text-align: center;
+  color: var(--rose-dark);
+  font-weight: 800;
+  font-size: 0.88rem;
+  animation: fadeIn 220ms ease both;
 }
 
 .collage-card {

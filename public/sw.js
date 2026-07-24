@@ -40,3 +40,16 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(event.request).then((cached) => cached || caches.match('./')))
   );
 });
+
+// Tapping a "your partner wants to shoot together" notification should
+// bring the booth to the foreground instead of just closing the banner.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => 'focus' in client);
+      if (existing) return existing.focus();
+      return self.clients.openWindow('./');
+    })
+  );
+});

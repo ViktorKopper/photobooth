@@ -4,9 +4,11 @@ import { capturePhoto, startCamera, stopCamera } from './camera.js';
 import { generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
 import {
+  clearSyncCountdown,
   createRoom,
   deleteRoomSession,
   joinRoom,
+  requestSyncCountdown,
   setReaction,
   setRoomCompleted,
   updateCaption,
@@ -30,6 +32,12 @@ import {
 
 const app = document.querySelector('#app');
 
+// How far in the future a sync-countdown request aims for, from the moment
+// Firestore resolves the request's server timestamp. Needs to comfortably
+// cover realtime propagation to both devices (usually well under a second)
+// plus a "get ready" moment before the visible 3-2-1 begins.
+const SYNC_LEAD_MS = 6000;
+
 const state = {
   user: null,
   roomId: getRoomIdFromUrl(),
@@ -46,7 +54,9 @@ const state = {
   collagePreviewUrl: null,
   unsubscribeRoom: null,
   unsubscribePhotos: null,
-  cameraStarted: false
+  cameraStarted: false,
+  syncScheduledFor: null,
+  syncTimers: []
 };
 
 function activeFilterCss() {
@@ -339,6 +349,7 @@ async function enterRoom() {
         renderFatalError(new Error('This booth was deleted or no longer exists.'));
         return;
       }
+      handleSyncCountdownChange();
       updateRoomView();
     },
     renderFatalError
@@ -374,6 +385,7 @@ function renderRoomShell() {
           <h2>Booth status</h2>
           <p>You are connected as <strong>${roleName}</strong>.</p>
           <p id="anniversaryLine" class="anniversary-line hidden"></p>
+          <button type="button" class="secondary small" id="notifyToggleBtn">🔔 Povoliť upozornenia</button>
 
           <div class="share-box">
             <label class="field-label">Share link</label>
@@ -417,8 +429,10 @@ function renderRoomShell() {
 
           <div id="cameraActions" class="action-row camera-actions">
             <button class="primary" id="takePhotoBtn">Take photo</button>
+            <button class="secondary" id="syncBtn">📸 Spolu teraz</button>
             <button class="secondary" id="switchCameraBtn">Switch camera</button>
           </div>
+          <p id="syncStatus" class="sync-status hidden"></p>
         </section>
       </section>
 
@@ -472,6 +486,9 @@ function renderRoomShell() {
   document.querySelector('#takePhotoBtn').addEventListener('click', takePhotoFlow);
   document.querySelector('#retakeBtn').addEventListener('click', retakePhoto);
   document.querySelector('#confirmBtn').addEventListener('click', confirmPhoto);
+  document.querySelector('#syncBtn').addEventListener('click', requestSyncFlow);
+  document.querySelector('#notifyToggleBtn').addEventListener('click', requestNotificationPermissionFlow);
+  updateNotifyToggleButton();
 
   document.querySelector('#captionInput').addEventListener('input', (event) => {
     if (!state.pendingCapture) return;
@@ -649,6 +666,12 @@ function updateRoomView() {
     takeButton.textContent = myCount >= 3 ? 'Your 3 photos are done' : `Take photo ${myCount + 1}/3`;
   }
 
+  const syncButton = document.querySelector('#syncBtn');
+  if (syncButton) {
+    const partnerJoined = Boolean(state.room.participants?.[otherRole(state.role)]?.joined);
+    syncButton.disabled = myCount >= 3 || Boolean(state.pendingCapture) || !state.cameraStarted || !partnerJoined;
+  }
+
   renderCollageSection(bothComplete);
 }
 
@@ -670,11 +693,38 @@ async function takePhotoFlow() {
     await sleep(750);
   }
 
-  countdown.textContent = '♡';
+  await finishCaptureAfterCountdown();
+}
+
+// Shared tail end of "count down, then capture" — used both by the manual
+// Take Photo button (classic fixed 3-2-1 above) and by the synced countdown
+// (which schedules this same function to land exactly at the shared
+// instant, see scheduleSyncCountdown below).
+async function finishCaptureAfterCountdown() {
+  const countdown = document.querySelector('#countdown');
+  const cameraActions = document.querySelector('#cameraActions');
+  const video = document.querySelector('#cameraPreview');
+
+  if (countdown) {
+    countdown.textContent = '♡';
+    countdown.classList.remove('pulse');
+  }
   playShutterSound();
   await sleep(260);
-  countdown.classList.add('hidden');
-  countdown.classList.remove('pulse');
+  if (countdown) {
+    countdown.classList.add('hidden');
+    countdown.classList.remove('pulse');
+  }
+
+  const myCount = state.room?.participants?.[state.role]?.photoCount || 0;
+
+  // On a synced countdown, one side may have nothing to do — already at
+  // 3/3, camera not ready, or already mid-capture. The shared moment simply
+  // doesn't apply to them; only re-enable the controls and stop.
+  if (!video || !state.cameraStarted || myCount >= 3 || state.pendingCapture) {
+    cameraActions?.classList.remove('disabled');
+    return;
+  }
 
   try {
     state.pendingCapture = await capturePhoto(video, state.facingMode, findFilter(state.activeFilter).ops);
@@ -688,7 +738,160 @@ async function takePhotoFlow() {
   } catch (error) {
     alert(error.message);
   } finally {
-    cameraActions.classList.remove('disabled');
+    cameraActions?.classList.remove('disabled');
+  }
+}
+
+async function requestSyncFlow() {
+  const myCount = state.room?.participants?.[state.role]?.photoCount || 0;
+  if (myCount >= 3) return alert('Už máš všetky 3 fotky potvrdené.');
+
+  const partnerRole = otherRole(state.role);
+  if (!state.room?.participants?.[partnerRole]?.joined) {
+    return alert(`${ROLES[partnerRole].name} ešte nie je pripojený/á do tejto izby.`);
+  }
+
+  try {
+    await requestSyncCountdown({ roomId: state.roomId, uid: state.user.uid, role: state.role });
+  } catch (error) {
+    alert(error.message || 'Nepodarilo sa spustiť spoločný odpočet.');
+  }
+}
+
+// Fires whenever the room doc changes and looks at state.room.syncCountdown.
+// Firestore's serverTimestamp() shows as null locally until the write is
+// acknowledged by the server — this naturally skips those interim snapshots
+// and only acts once a real, server-resolved timestamp is available, so
+// both partners' devices schedule against the exact same instant.
+function handleSyncCountdownChange() {
+  const sync = state.room?.syncCountdown;
+
+  if (!sync?.requestedAt?.toMillis) {
+    return;
+  }
+
+  const requestedAtMs = sync.requestedAt.toMillis();
+  if (state.syncScheduledFor === requestedAtMs) return;
+  state.syncScheduledFor = requestedAtMs;
+
+  if (sync.requestedBy !== state.role) {
+    notifyPartnerSyncRequest();
+  }
+
+  scheduleSyncCountdown(requestedAtMs + SYNC_LEAD_MS);
+}
+
+// Schedules the visible 3-2-1 and the final shutter with independent
+// setTimeout calls, each computing its own delay from Date.now() against
+// the fixed target instant — rather than a chained/polled countdown, so
+// there's no compounding drift regardless of when this function itself
+// happens to run.
+function scheduleSyncCountdown(targetAtMs) {
+  clearSyncTimers();
+
+  const countdown = document.querySelector('#countdown');
+  const cameraActions = document.querySelector('#cameraActions');
+
+  const showNumber = (label) => {
+    if (!countdown) return;
+    countdown.classList.remove('hidden');
+    cameraActions?.classList.add('disabled');
+    countdown.textContent = String(label);
+    countdown.classList.remove('pulse');
+    void countdown.offsetWidth;
+    countdown.classList.add('pulse');
+    hideSyncStatus();
+  };
+
+  const scheduleAt = (msBeforeTarget, fn) => {
+    const delay = targetAtMs - msBeforeTarget - Date.now();
+    state.syncTimers.push(window.setTimeout(fn, Math.max(0, delay)));
+  };
+
+  const tickStatus = () => {
+    const remaining = targetAtMs - 3000 - Date.now();
+    if (remaining > 0) {
+      showSyncStatus(`Spoločný odpočet o ${Math.ceil((remaining + 3000) / 1000)} s...`);
+      state.syncTimers.push(window.setTimeout(tickStatus, 500));
+    }
+  };
+  tickStatus();
+
+  scheduleAt(3000, () => showNumber(3));
+  scheduleAt(2000, () => showNumber(2));
+  scheduleAt(1000, () => showNumber(1));
+  scheduleAt(0, () => finishCaptureAfterCountdown().then(() => {
+    hideSyncStatus();
+    // Whoever requested the sync clears it once it fires, returning the
+    // room to a clean state for the next one. Harmless no-op if the other
+    // side (or a stale timer) races to clear it too.
+    if (state.room?.syncCountdown?.requestedBy === state.role) {
+      clearSyncCountdown(state.roomId);
+    }
+  }));
+}
+
+function clearSyncTimers() {
+  state.syncTimers.forEach((handle) => window.clearTimeout(handle));
+  state.syncTimers = [];
+}
+
+function showSyncStatus(text) {
+  const el = document.querySelector('#syncStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('hidden');
+}
+
+function hideSyncStatus() {
+  const el = document.querySelector('#syncStatus');
+  if (!el) return;
+  el.classList.add('hidden');
+}
+
+function updateNotifyToggleButton() {
+  const button = document.querySelector('#notifyToggleBtn');
+  if (!button || !('Notification' in window)) {
+    button?.classList.add('hidden');
+    return;
+  }
+
+  if (Notification.permission === 'granted') {
+    button.textContent = '🔔 Upozornenia zapnuté';
+    button.disabled = true;
+  } else if (Notification.permission === 'denied') {
+    button.textContent = '🔕 Upozornenia zablokované v prehliadači';
+    button.disabled = true;
+  } else {
+    button.textContent = '🔔 Povoliť upozornenia';
+    button.disabled = false;
+  }
+}
+
+async function requestNotificationPermissionFlow() {
+  if (!('Notification' in window)) return;
+  await Notification.requestPermission();
+  updateNotifyToggleButton();
+}
+
+// Requesting permission needs a real user gesture (the button above), but
+// SHOWING a notification once permission is already granted does not — this
+// runs straight from the Firestore snapshot listener with no user gesture
+// available, which is fine as long as permission was granted ahead of time.
+async function notifyPartnerSyncRequest() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    await registration.showNotification('Spoločný odpočet spustený! 💕', {
+      body: `${ROLES[otherRole(state.role)].name} chce odfotiť spolu — priprav sa!`,
+      icon: `${import.meta.env.BASE_URL}icon-192.png`,
+      badge: `${import.meta.env.BASE_URL}icon-192.png`,
+      tag: 'photobooth-sync',
+      vibrate: [80, 40, 80]
+    });
+  } catch {
+    // Notifications are a nice-to-have; never block the countdown on this.
   }
 }
 
@@ -982,6 +1185,8 @@ function stopSubscriptions() {
   if (state.unsubscribePhotos) state.unsubscribePhotos();
   state.unsubscribeRoom = null;
   state.unsubscribePhotos = null;
+  clearSyncTimers();
+  state.syncScheduledFor = null;
 }
 
 function showInlineError(inputId, message) {
