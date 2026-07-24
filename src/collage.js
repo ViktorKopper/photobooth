@@ -1,25 +1,131 @@
 import { clamp, daysTogether, distanceBetween, formatDate, formatDistanceKm } from './utils.js';
 
-const PALETTE = {
-  bgTop: '#fff7f4',
-  bgMid: '#ffe7ec',
-  bgBottom: '#fffdf8',
-  heart: '#d94d72',
-  title: '#5a2a35',
-  subtitle: '#8b4a5a',
-  message: '#9b2948',
-  label: '#7b3d4b',
-  meta: '#9c6672',
-  cardShadow: 'rgba(88, 40, 50, 0.22)',
-  connectorHeart: '#c7345a',
-  viktorTape: '#3f7fb8',
-  jerickaTape: '#c7345a',
-  // Darker "ink" tones (same hues as --viktor-dark / --jericka-dark in
-  // styles.css) so handwritten captions stay legible against the white
-  // polaroid border instead of blending into the lighter tape colors.
-  viktorInk: '#2a5a86',
-  jerickaInk: '#9b2948'
-};
+// Colour themes for the finished collage. Every drawing routine reads from
+// the active palette rather than hard-coded hexes, so a theme swap restyles
+// the whole page — background, tape, hearts, ink — in one go.
+//
+// A note on the "ink" tones: captions are written onto the white polaroid
+// border, so they always need to stay dark and legible regardless of how
+// light or dark the surrounding page is. That's why they don't simply
+// follow the tape colours.
+export const COLLAGE_THEMES = [
+  {
+    id: 'rose',
+    label: 'Rose',
+    palette: {
+      bgTop: '#fff7f4',
+      bgMid: '#ffe7ec',
+      bgBottom: '#fffdf8',
+      heart: '#d94d72',
+      title: '#5a2a35',
+      subtitle: '#8b4a5a',
+      message: '#9b2948',
+      label: '#7b3d4b',
+      meta: '#9c6672',
+      cardShadow: 'rgba(88, 40, 50, 0.22)',
+      cardBg: '#ffffff',
+      innerBorder: 'rgba(190, 140, 150, 0.35)',
+      photoTint: '#e85d85',
+      photoFilter: '',
+      stripBg: 'rgba(255, 255, 255, 0.55)',
+      connectorHeart: '#c7345a',
+      viktorTape: '#3f7fb8',
+      jerickaTape: '#c7345a',
+      viktorInk: '#2a5a86',
+      jerickaInk: '#9b2948'
+    }
+  },
+  {
+    id: 'midnight',
+    label: 'Midnight',
+    palette: {
+      bgTop: '#1b2340',
+      bgMid: '#2a3358',
+      bgBottom: '#151b30',
+      heart: '#8fa6e0',
+      title: '#f2f5ff',
+      subtitle: '#b9c4e8',
+      message: '#ffd9e6',
+      label: '#cdd6f0',
+      meta: '#94a0c4',
+      cardShadow: 'rgba(5, 8, 20, 0.5)',
+      cardBg: '#ffffff',
+      innerBorder: 'rgba(120, 140, 190, 0.35)',
+      photoTint: '#4a6bb0',
+      photoFilter: '',
+      stripBg: 'rgba(255, 255, 255, 0.10)',
+      connectorHeart: '#f2a9c4',
+      viktorTape: '#6fa8d8',
+      jerickaTape: '#e07fa4',
+      viktorInk: '#1f4468',
+      jerickaInk: '#8c2246'
+    }
+  },
+  {
+    id: 'autumn',
+    label: 'Autumn',
+    palette: {
+      bgTop: '#fdf6ea',
+      bgMid: '#f7e3c8',
+      bgBottom: '#fffaf0',
+      heart: '#c2712c',
+      title: '#4a2c17',
+      subtitle: '#8a5a34',
+      message: '#a8501c',
+      label: '#6b4526',
+      meta: '#9c7a56',
+      cardShadow: 'rgba(74, 44, 23, 0.22)',
+      cardBg: '#fffdf7',
+      innerBorder: 'rgba(180, 150, 110, 0.35)',
+      photoTint: '#d98b3a',
+      photoFilter: '',
+      stripBg: 'rgba(255, 255, 255, 0.5)',
+      connectorHeart: '#c2712c',
+      viktorTape: '#4f7a4a',
+      jerickaTape: '#c2712c',
+      viktorInk: '#2f5230',
+      jerickaInk: '#8a4413'
+    }
+  },
+  {
+    id: 'mono',
+    label: 'Mono',
+    palette: {
+      bgTop: '#f7f7f5',
+      bgMid: '#e8e8e6',
+      bgBottom: '#fcfcfb',
+      heart: '#7a7a78',
+      title: '#1f1f1e',
+      subtitle: '#55554f',
+      message: '#2c2c2a',
+      label: '#444441',
+      meta: '#7a7a76',
+      cardShadow: 'rgba(20, 20, 20, 0.22)',
+      cardBg: '#ffffff',
+      innerBorder: 'rgba(120, 120, 118, 0.35)',
+      photoTint: '#8a8a88',
+      // The only theme that also drains the colour out of the photos
+      // themselves — a "black & white" collage with colour photos in it
+      // would read as a mistake rather than a choice.
+      photoFilter: 'grayscale(1)',
+      stripBg: 'rgba(255, 255, 255, 0.55)',
+      connectorHeart: '#3d3d3a',
+      viktorTape: '#6b6b68',
+      jerickaTape: '#2c2c2a',
+      viktorInk: '#2c2c2a',
+      jerickaInk: '#1f1f1e'
+    }
+  }
+];
+
+export function findTheme(id) {
+  return COLLAGE_THEMES.find((theme) => theme.id === id) || COLLAGE_THEMES[0];
+}
+
+// The active palette. Swapped once per generateCollage() call, immediately
+// before the synchronous drawing pass, so every draw helper below can read
+// it without threading a palette argument through a dozen signatures.
+let PALETTE = COLLAGE_THEMES[0].palette;
 
 // Photo cards use a portrait-ish 4:5 ratio (not landscape) so mobile
 // portrait selfies and landscape webcam shots both crop reasonably instead
@@ -263,7 +369,7 @@ function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
   ctx.shadowColor = PALETTE.cardShadow;
   ctx.shadowBlur = 26;
   ctx.shadowOffsetY = 12;
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = PALETTE.cardBg;
   roundRect(ctx, x, y, width, height, radius);
   ctx.fill();
   ctx.restore();
@@ -284,20 +390,21 @@ function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
   ctx.clip();
 
   const filter = brightnessFilterFor(image);
-  ctx.filter = `brightness(${filter}) saturate(1.06) contrast(1.02)`;
+  const themeFilter = PALETTE.photoFilter ? ` ${PALETTE.photoFilter}` : '';
+  ctx.filter = `brightness(${filter}) saturate(1.06) contrast(1.02)${themeFilter}`;
   drawCoverImage(ctx, image, innerX, innerY, innerWidth, innerHeight);
   ctx.filter = 'none';
 
-  // Faint warm tint so a cold, dim photo still reads as part of the same
-  // rose-toned memory as a bright one.
+  // Faint tint so a cold, dim photo still reads as part of the same
+  // memory as a bright one, in whatever colour the theme is built around.
   ctx.globalAlpha = 0.08;
-  ctx.fillStyle = '#e85d85';
+  ctx.fillStyle = PALETTE.photoTint;
   ctx.fillRect(innerX, innerY, innerWidth, innerHeight);
   ctx.globalAlpha = 1;
   ctx.restore();
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(190, 140, 150, 0.35)';
+  ctx.strokeStyle = PALETTE.innerBorder;
   ctx.lineWidth = 2;
   roundRect(ctx, innerX + 1, innerY + 1, innerWidth - 2, innerHeight - 2, innerRadius);
   ctx.stroke();
@@ -690,7 +797,7 @@ function drawStripLayout(ctx, dims, payload) {
   const stripX = framePadding;
   const stripWidth = width - framePadding * 2;
   ctx.save();
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.fillStyle = PALETTE.stripBg;
   roundRect(ctx, stripX, 30, stripWidth, height - 60, 34);
   ctx.fill();
   ctx.restore();
@@ -865,7 +972,8 @@ export async function generateCollage({
   roomId = '',
   scale = 1,
   anniversaryDate = '',
-  locations = null
+  locations = null,
+  theme = 'rose'
 }) {
   const { viktor, jericka } = splitPhotosByOwner(photos);
   const { viktorItems, jerickaItems } = await loadOwnerImages(viktor, jericka);
@@ -899,6 +1007,10 @@ export async function generateCollage({
   canvas.width = Math.round(dims.width * safeScale);
   canvas.height = Math.round(dims.height * safeScale);
   ctx.scale(safeScale, safeScale);
+
+  // Set immediately before the (synchronous) drawing pass, so all the
+  // awaits above can't interleave another generation's palette into ours.
+  PALETTE = findTheme(theme).palette;
 
   drawFn(ctx, dims, payload);
   applyFilmGrain(ctx, dims.width, dims.height);

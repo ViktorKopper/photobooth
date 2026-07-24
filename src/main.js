@@ -1,9 +1,17 @@
 import './styles.css';
 import { ensureAnonymousAuth } from './firebase.js';
 import { capturePhoto, startCamera, stopCamera } from './camera.js';
-import { generateCollage } from './collage.js';
+import { COLLAGE_THEMES, generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
 import { describeLocation, describeSearchResult, searchCities } from './geo.js';
+import {
+  expiredRoomIds,
+  forgetAllRooms,
+  forgetRoom,
+  listRooms,
+  rememberRoom,
+  ROOM_MAX_AGE_MS
+} from './roomHistory.js';
 import {
   clearSyncCountdown,
   createRoom,
@@ -66,6 +74,9 @@ const state = {
   citySearchToken: 0,
   collageBlob: null,
   collagePreviewUrl: null,
+  collageLayout: 'grid',
+  collageScale: '1',
+  collageTheme: 'rose',
   unsubscribeRoom: null,
   unsubscribePhotos: null,
   cameraStarted: false,
@@ -124,6 +135,10 @@ async function bootstrap() {
   try {
     state.user = await ensureAnonymousAuth();
 
+    // Fire-and-forget: expired booths get swept in the background while the
+    // person carries on into their room.
+    pruneExpiredRooms();
+
     if (state.roomId) {
       renderRoleGate('join');
     } else {
@@ -131,6 +146,20 @@ async function bootstrap() {
     }
   } catch (error) {
     renderFatalError(error);
+  }
+}
+
+async function pruneExpiredRooms() {
+  const stale = expiredRoomIds({ exclude: state.roomId });
+
+  for (const roomId of stale) {
+    try {
+      await deleteRoomSession(roomId);
+    } catch {
+      // Already gone, or the other side deleted it first — either way the
+      // local record should go too.
+    }
+    forgetRoom(roomId);
   }
 }
 
@@ -226,6 +255,8 @@ function renderLanding() {
   stopSubscriptions();
   stopCamera();
 
+  const boothCount = listRooms().length;
+
   setApp(`
     <main class="shell center-shell">
       <section class="card hero-card fade-in">
@@ -255,6 +286,16 @@ function renderLanding() {
           <button class="primary" id="createBtn">Create new booth</button>
           <button class="secondary" id="joinBtn">Join booth</button>
         </div>
+
+        ${
+          boothCount
+            ? `<div class="danger-zone">
+                 <p class="danger-zone-label">Danger zone</p>
+                 <p class="danger-zone-hint">${boothCount} booth${boothCount === 1 ? '' : 's'} on this device. Booths older than two days are cleaned up on their own.</p>
+                 <button class="danger small" id="resetAllBtn">Delete all booths</button>
+               </div>`
+            : ''
+        }
       </section>
     </main>
   `);
@@ -268,6 +309,7 @@ function renderLanding() {
 
   document.querySelector('#createBtn').addEventListener('click', () => renderRoleGate('create'));
   document.querySelector('#joinBtn').addEventListener('click', () => renderJoinByCode());
+  document.querySelector('#resetAllBtn')?.addEventListener('click', resetAllBoothsFlow);
 }
 
 function cityPreviewText() {
@@ -516,6 +558,7 @@ async function enterBooth(isCreate) {
     }
 
     window.history.replaceState({}, '', `?room=${state.roomId}`);
+    rememberRoom(state.roomId);
     await enterRoom();
   } catch (error) {
     renderFatalError(error);
@@ -1286,6 +1329,22 @@ async function toggleReactionFlow(ownerRole, index) {
 // text/links) — support varies a lot by browser, so the Share button is
 // only rendered when it will actually work, instead of showing a button
 // that fails on desktop browsers without file-sharing support.
+function buildSegmented(label, stateKey, options) {
+  return `
+    <div class="layout-control">
+      <span class="field-label">${escapeHtml(label)}</span>
+      <div class="segmented" data-state-key="${stateKey}" role="group" aria-label="${escapeAttr(label)}">
+        ${options
+          .map(
+            (option) =>
+              `<button type="button" class="segmented-option${state[stateKey] === option.value ? ' active' : ''}" data-value="${escapeAttr(option.value)}">${escapeHtml(option.label)}</button>`
+          )
+          .join('')}
+      </div>
+    </div>
+  `;
+}
+
 function canShareFiles() {
   if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false;
   try {
@@ -1318,30 +1377,16 @@ function renderCollageSection(canGenerate) {
         <p>Generate a high resolution PNG from all 6 photos.</p>
       </div>
       <div class="layout-controls">
-        <div class="layout-control">
-          <label class="field-label" for="layoutSelect">Layout</label>
-          <select id="layoutSelect" class="text-input visually-hidden">
-            <option value="grid">Grid — Viktor left, Jericka right</option>
-            <option value="strip">Classic photobooth strip</option>
-            <option value="hero">Hero — one big photo + rest</option>
-          </select>
-          <div class="segmented" data-controls="layoutSelect">
-            <button type="button" class="segmented-option active" data-value="grid">Grid</button>
-            <button type="button" class="segmented-option" data-value="strip">Strip</button>
-            <button type="button" class="segmented-option" data-value="hero">Hero</button>
-          </div>
-        </div>
-        <div class="layout-control">
-          <label class="field-label" for="resolutionSelect">Quality</label>
-          <select id="resolutionSelect" class="text-input visually-hidden">
-            <option value="1">Standard</option>
-            <option value="2">Print quality (2×)</option>
-          </select>
-          <div class="segmented" data-controls="resolutionSelect">
-            <button type="button" class="segmented-option active" data-value="1">Standard</button>
-            <button type="button" class="segmented-option" data-value="2">Print (2×)</button>
-          </div>
-        </div>
+        ${buildSegmented('Layout', 'collageLayout', [
+          { value: 'grid', label: 'Grid' },
+          { value: 'strip', label: 'Strip' },
+          { value: 'hero', label: 'Hero' }
+        ])}
+        ${buildSegmented('Quality', 'collageScale', [
+          { value: '1', label: 'Standard' },
+          { value: '2', label: 'Print (2×)' }
+        ])}
+        ${buildSegmented('Theme', 'collageTheme', COLLAGE_THEMES.map((theme) => ({ value: theme.id, label: theme.label })))}
       </div>
     </div>
     ${preview}
@@ -1359,10 +1404,13 @@ function renderCollageSection(canGenerate) {
   `;
 
   document.querySelectorAll('.segmented').forEach((group) => {
-    const select = document.querySelector(`#${group.dataset.controls}`);
+    const stateKey = group.dataset.stateKey;
     group.querySelectorAll('.segmented-option').forEach((button) => {
       button.addEventListener('click', () => {
-        select.value = button.dataset.value;
+        // Kept in state, not just in the DOM: this section is fully
+        // re-rendered after every generation, so a DOM-only selection
+        // would silently snap back to the default each time.
+        state[stateKey] = button.dataset.value;
         group.querySelectorAll('.segmented-option').forEach((option) => {
           option.classList.toggle('active', option === button);
         });
@@ -1416,8 +1464,8 @@ async function shareCollageFlow() {
 
 async function generateCollageFlow() {
   const button = document.querySelector('#generateCollageBtn');
-  const layout = document.querySelector('#layoutSelect')?.value || 'grid';
-  const scale = Number(document.querySelector('#resolutionSelect')?.value) || 1;
+  const layout = state.collageLayout;
+  const scale = Number(state.collageScale) || 1;
   button.disabled = true;
   button.textContent = 'Generating...';
 
@@ -1434,7 +1482,8 @@ async function generateCollageFlow() {
       locations: {
         viktor: state.room?.participants?.viktor?.location || null,
         jericka: state.room?.participants?.jericka?.location || null
-      }
+      },
+      theme: state.collageTheme
     });
 
     state.collageBlob = result.blob;
@@ -1454,6 +1503,7 @@ async function deleteSessionFlow() {
 
   try {
     await deleteRoomSession(state.roomId);
+    forgetRoom(state.roomId);
     window.history.replaceState({}, '', window.location.pathname);
     state.roomId = '';
     state.photos = [];
@@ -1464,6 +1514,40 @@ async function deleteSessionFlow() {
   } catch (error) {
     alert(error.message || 'Could not delete the booth.');
   }
+}
+
+async function resetAllBoothsFlow() {
+  const known = listRooms();
+  if (!known.length) return alert('There are no booths on this device to delete.');
+
+  const confirmed = confirm(
+    `Delete all ${known.length} booth${known.length === 1 ? '' : 's'} from this device, including every uploaded photo? This cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  const button = document.querySelector('#resetAllBtn');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Deleting...';
+  }
+
+  let failed = 0;
+  for (const entry of known) {
+    try {
+      await deleteRoomSession(entry.roomId);
+    } catch {
+      failed += 1;
+    }
+  }
+
+  forgetAllRooms();
+  state.roomId = '';
+  state.room = null;
+  state.photos = [];
+  window.history.replaceState({}, '', window.location.pathname);
+  renderLanding();
+
+  showToast(failed ? `Done, ${failed} could not be removed` : 'All booths deleted ♡');
 }
 
 function stopSubscriptions() {
