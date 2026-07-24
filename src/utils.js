@@ -60,6 +60,39 @@ export function sanitizeCaption(value) {
   return String(value ?? '').trim().slice(0, 36);
 }
 
+// Validates an anniversary date coming from an <input type="date">: must be
+// a real, parseable YYYY-MM-DD date that isn't in the future. Empty is a
+// valid "not set" state, same spirit as sanitizeCaption.
+export function sanitizeAnniversaryDate(value) {
+  const trimmed = String(value ?? '').trim();
+  if (!trimmed) return '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return '';
+
+  const parsed = new Date(`${trimmed}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return '';
+  if (parsed.getTime() > Date.now()) return '';
+
+  return trimmed;
+}
+
+// Counts days together inclusively — the anniversary date itself is day 1,
+// matching how people naturally count "we've been together for X days".
+// Returns null when there's no valid date to count from.
+export function daysTogether(anniversaryDate, referenceDate = new Date()) {
+  if (!anniversaryDate) return null;
+
+  const start = new Date(`${anniversaryDate}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
+  const diffMs = today.getTime() - startDay.getTime();
+
+  if (diffMs < 0) return null;
+
+  return Math.floor(diffMs / 86400000) + 1;
+}
+
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

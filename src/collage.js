@@ -1,4 +1,4 @@
-import { formatDate, clamp } from './utils.js';
+import { clamp, daysTogether, formatDate } from './utils.js';
 
 const PALETTE = {
   bgTop: '#fff7f4',
@@ -421,13 +421,17 @@ function drawHeaderBlock(ctx, {
   drawHeartAt(ctx, centerX + heartOffset, messageY - heartSize * 0.5, heartSize, PALETTE.message);
 }
 
-function drawFooter(ctx, { centerX, y, roomId }) {
+function drawFooter(ctx, { centerX, y, roomId, dayCount }) {
   ctx.textAlign = 'center';
   ctx.fillStyle = PALETTE.meta;
   ctx.font = '26px Inter, Arial, sans-serif';
 
-  const stamp = roomId ? `Booth ${roomId}  ·  ${formatDate()}` : formatDate();
-  ctx.fillText(stamp, centerX, y);
+  const parts = [];
+  if (roomId) parts.push(`Booth ${roomId}`);
+  if (dayCount) parts.push(`Deň ${dayCount} spolu`);
+  parts.push(formatDate());
+
+  ctx.fillText(parts.join('  ·  '), centerX, y);
 }
 
 function labelCorner(ctx, x, y, letter, color, size = 22) {
@@ -591,7 +595,7 @@ function computeGridDimensions() {
 
 function drawGridLayout(ctx, dims, payload) {
   const { width, marginX, gap, top, cardWidth, cardHeight, bottomLabelY, footerY } = dims;
-  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady } = payload;
+  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount } = payload;
 
   drawPageBackground(ctx, dims.width, dims.height);
 
@@ -643,7 +647,7 @@ function drawGridLayout(ctx, dims, payload) {
   ctx.fillText('Viktor', marginX + cardWidth / 2, bottomLabelY);
   ctx.fillText('Jericka', marginX + cardWidth + gap + cardWidth / 2, bottomLabelY);
 
-  drawFooter(ctx, { centerX: width / 2, y: footerY, roomId });
+  drawFooter(ctx, { centerX: width / 2, y: footerY, roomId, dayCount });
 }
 
 function computeStripDimensions() {
@@ -678,7 +682,7 @@ function computeStripDimensions() {
 
 function drawStripLayout(ctx, dims, payload) {
   const { width, height, headerHeight, framePadding, photoWidth, photoHeight, gap, roundGap, rounds, cardX, footerHeight } = dims;
-  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady } = payload;
+  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount } = payload;
 
   drawPageBackground(ctx, width, height);
 
@@ -743,7 +747,7 @@ function drawStripLayout(ctx, dims, payload) {
   ctx.textAlign = 'center';
   ctx.fillText('Viktor  ♡  Jericka', width / 2, footerY - 20);
 
-  drawFooter(ctx, { centerX: width / 2, y: footerY + 18, roomId });
+  drawFooter(ctx, { centerX: width / 2, y: footerY + 18, roomId, dayCount });
 }
 
 function computeHeroDimensions() {
@@ -781,7 +785,7 @@ function computeHeroDimensions() {
 
 function drawHeroLayout(ctx, dims, payload) {
   const { width, height, heroSize, heroX, heroY, smallWidth, smallHeight, smallGap, marginX, smallY } = dims;
-  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady } = payload;
+  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount } = payload;
 
   drawPageBackground(ctx, width, height);
 
@@ -850,17 +854,18 @@ function drawHeroLayout(ctx, dims, payload) {
   ctx.textAlign = 'center';
   ctx.fillText('Viktor  ♡  Jericka', width / 2, labelY);
 
-  drawFooter(ctx, { centerX: width / 2, y: labelY + 45, roomId });
+  drawFooter(ctx, { centerX: width / 2, y: labelY + 45, roomId, dayCount });
 }
 
-export async function generateCollage({ photos, customMessage, layout = 'grid', roomId = '', scale = 1 }) {
+export async function generateCollage({ photos, customMessage, layout = 'grid', roomId = '', scale = 1, anniversaryDate = '' }) {
   const { viktor, jericka } = splitPhotosByOwner(photos);
   const { viktorItems, jerickaItems } = await loadOwnerImages(viktor, jericka);
   const handwritingReady = await ensureHandwritingFont();
   const markerReady = await ensureMarkerFont();
 
   const message = customMessage || 'Our little photobooth memory';
-  const payload = { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady };
+  const dayCount = daysTogether(anniversaryDate);
+  const payload = { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount };
 
   let dims;
   let drawFn;

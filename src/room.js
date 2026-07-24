@@ -38,7 +38,7 @@ function participantFor(uid) {
   };
 }
 
-export async function createRoom({ uid, role, customMessage }) {
+export async function createRoom({ uid, role, customMessage, anniversaryDate = null }) {
   const roomId = generateRoomId();
   const participants = {
     viktor: blankParticipant(),
@@ -54,6 +54,7 @@ export async function createRoom({ uid, role, customMessage }) {
     createdBy: uid,
     title: 'Viktor & Jericka Photobooth',
     customMessage,
+    anniversaryDate: anniversaryDate || null,
     participants
   });
 

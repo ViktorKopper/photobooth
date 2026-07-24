@@ -53,6 +53,7 @@ service cloud.firestore {
         'createdBy',
         'title',
         'customMessage',
+        'anniversaryDate',
         'participants'
       ]);
     }
@@ -70,7 +71,11 @@ service cloud.firestore {
         && data.participants.jericka.photoCount >= 0
         && data.participants.jericka.photoCount <= 3
         && data.customMessage is string
-        && data.customMessage.size() <= 80;
+        && data.customMessage.size() <= 80
+        // Optional — older rooms were created before this field existed.
+        && (!('anniversaryDate' in data) || data.anniversaryDate == null || (
+          data.anniversaryDate is string && data.anniversaryDate.size() <= 10
+        ));
     }
 
     function creatingOwnRoom(data) {

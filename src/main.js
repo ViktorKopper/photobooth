@@ -15,12 +15,14 @@ import {
   watchRoom
 } from './room.js';
 import {
+  daysTogether,
   downloadBlob,
   getRoomIdFromUrl,
   normalizeRoomCode,
   otherRole,
   roomLink,
   ROLES,
+  sanitizeAnniversaryDate,
   sanitizeCaption,
   sanitizeCollageMessage,
   sleep
@@ -39,6 +41,7 @@ const state = {
   facingMode: 'user',
   activeFilter: 'none',
   customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
+  anniversaryDate: localStorage.getItem('photobooth-anniversary') || '',
   collageBlob: null,
   collagePreviewUrl: null,
   unsubscribeRoom: null,
@@ -48,6 +51,22 @@ const state = {
 
 function activeFilterCss() {
   return cssFromOps(findFilter(state.activeFilter).ops);
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Slovak plural rules for "day": 1 = deň, 2-4 = dni, 5+ (and 0) = dní.
+function formatDaysSk(count) {
+  if (count === 1) return `${count} deň`;
+  if (count >= 2 && count <= 4) return `${count} dni`;
+  return `${count} dní`;
+}
+
+function anniversaryPreviewText() {
+  const count = daysTogether(state.anniversaryDate);
+  return count ? `💕 Spolu už ${formatDaysSk(count)}` : '';
 }
 
 registerServiceWorker();
@@ -183,6 +202,16 @@ function renderLanding() {
         <label class="field-label" for="messageInput">Collage message</label>
         <input id="messageInput" class="text-input" maxlength="80" value="${escapeAttr(state.customMessage)}" />
 
+        <label class="field-label" for="anniversaryInput">Spolu od (nepovinné)</label>
+        <input
+          id="anniversaryInput"
+          type="date"
+          class="text-input"
+          value="${escapeAttr(state.anniversaryDate)}"
+          max="${todayIso()}"
+        />
+        <p id="anniversaryPreview" class="anniversary-line${state.anniversaryDate ? '' : ' hidden'}">${anniversaryPreviewText()}</p>
+
         <div class="action-row">
           <button class="primary" id="createBtn">Create new booth</button>
           <button class="secondary" id="joinBtn">Join booth</button>
@@ -194,6 +223,15 @@ function renderLanding() {
   document.querySelector('#messageInput').addEventListener('input', (event) => {
     state.customMessage = sanitizeCollageMessage(event.target.value);
     localStorage.setItem('photobooth-message', state.customMessage);
+  });
+
+  document.querySelector('#anniversaryInput').addEventListener('input', (event) => {
+    state.anniversaryDate = sanitizeAnniversaryDate(event.target.value);
+    localStorage.setItem('photobooth-anniversary', state.anniversaryDate);
+
+    const preview = document.querySelector('#anniversaryPreview');
+    preview.textContent = anniversaryPreviewText();
+    preview.classList.toggle('hidden', !state.anniversaryDate);
   });
 
   document.querySelector('#createBtn').addEventListener('click', () => renderRoleGate('create'));
@@ -272,7 +310,8 @@ function renderRoleGate(mode) {
           state.roomId = await createRoom({
             uid: state.user.uid,
             role: state.role,
-            customMessage: sanitizeCollageMessage(state.customMessage)
+            customMessage: sanitizeCollageMessage(state.customMessage),
+            anniversaryDate: sanitizeAnniversaryDate(state.anniversaryDate)
           });
           window.history.replaceState({}, '', `?room=${state.roomId}`);
         } else {
@@ -334,6 +373,7 @@ function renderRoomShell() {
         <aside class="card status-card">
           <h2>Booth status</h2>
           <p>You are connected as <strong>${roleName}</strong>.</p>
+          <p id="anniversaryLine" class="anniversary-line hidden"></p>
 
           <div class="share-box">
             <label class="field-label">Share link</label>
@@ -560,6 +600,13 @@ function buildThumbRow(role) {
 
 function updateRoomView() {
   if (!state.room) return;
+
+  const anniversaryLine = document.querySelector('#anniversaryLine');
+  if (anniversaryLine) {
+    const count = daysTogether(state.room.anniversaryDate);
+    anniversaryLine.textContent = count ? `💕 Spolu už ${formatDaysSk(count)}` : '';
+    anniversaryLine.classList.toggle('hidden', !count);
+  }
 
   const viktorCount = state.room.participants?.viktor?.photoCount || 0;
   const jerickaCount = state.room.participants?.jericka?.photoCount || 0;
@@ -897,7 +944,8 @@ async function generateCollageFlow() {
       customMessage: state.room?.customMessage || state.customMessage,
       layout,
       roomId: state.roomId,
-      scale
+      scale,
+      anniversaryDate: state.room?.anniversaryDate || ''
     });
 
     state.collageBlob = result.blob;
