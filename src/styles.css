@@ -476,6 +476,35 @@ p {
   margin-top: 20px;
 }
 
+.qr-box {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: white;
+}
+
+.qr-image {
+  display: block;
+  width: 150px;
+  height: 150px;
+  border-radius: 10px;
+}
+
+.qr-code-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.share-box .wide {
+  margin-top: 8px;
+}
+
 .copy-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -741,12 +770,43 @@ p {
   text-shadow: 0 14px 40px rgba(0, 0, 0, 0.24);
 }
 
+.camera-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .filter-row {
   display: flex;
   gap: 10px;
-  margin-top: 14px;
   padding: 4px 2px;
   overflow-x: auto;
+}
+
+.timer-picker {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border);
+}
+
+.timer-option {
+  padding: 7px 11px;
+  border-radius: 999px;
+  color: var(--rose-dark);
+  background: transparent;
+  font-size: 0.78rem;
+  font-weight: 800;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.timer-option.active {
+  color: white;
+  background: linear-gradient(135deg, #e85d85, #b82449);
 }
 
 .filter-swatch {
@@ -899,6 +959,38 @@ p {
 
 .collage-card {
   margin-top: 20px;
+}
+
+.shared-collage {
+  margin-top: 26px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: rgba(255, 245, 248, 0.72);
+  text-align: center;
+}
+
+.shared-collage .collage-preview {
+  margin-top: 12px;
+}
+
+.shared-collage-meta {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.shared-collage-download {
+  display: inline-block;
+  margin-top: 12px;
+  min-height: 48px;
+  padding: 13px 20px;
+  border-radius: 999px;
+  color: var(--rose-dark);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--border);
+  font-weight: 850;
+  text-decoration: none;
 }
 
 .danger-zone {

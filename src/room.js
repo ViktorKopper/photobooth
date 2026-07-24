@@ -277,7 +277,7 @@ export async function setReaction({ roomId, uid, myRole, ownerRole, index, value
 // (requestedAt + a fixed lead time) — anchoring both devices to one
 // server-issued timestamp instead of trusting each phone's local clock to
 // agree on "now".
-export async function requestSyncCountdown({ roomId, uid, role }) {
+export async function requestSyncCountdown({ roomId, uid, role, seconds = 3 }) {
   const roomRef = doc(db, 'rooms', roomId);
   const roomSnapshot = await getDoc(roomRef);
 
@@ -292,7 +292,14 @@ export async function requestSyncCountdown({ roomId, uid, role }) {
   }
 
   await updateDoc(roomRef, {
-    syncCountdown: { requestedBy: role, requestedAt: serverTimestamp() },
+    // The length travels with the request so both devices run the exact
+    // same countdown — otherwise whoever picked 10s would still be waiting
+    // when the other side's shutter had already fired.
+    syncCountdown: {
+      requestedBy: role,
+      requestedAt: serverTimestamp(),
+      seconds: Math.max(1, Math.min(Math.round(seconds), 30))
+    },
     updatedAt: serverTimestamp()
   });
 }
@@ -315,6 +322,49 @@ function bothCompletedAfterUpload(room, role, index) {
   return viktorCompleted && jerickaCompleted;
 }
 
+// Publishes a generated collage to the room so both partners end up with
+// the same file. Without this each side renders their own copy locally,
+// with their own theme and layout picks — two different keepsakes of one
+// shared evening.
+export async function publishCollage({ roomId, uid, role, blob, meta = {} }) {
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnapshot = await getDoc(roomRef);
+
+  if (!roomSnapshot.exists()) {
+    throw new Error('Room no longer exists.');
+  }
+
+  if (roomSnapshot.data().participants?.[role]?.uid !== uid) {
+    throw new Error('This browser is not connected as this person in the room.');
+  }
+
+  const storagePath = `photobooth/${roomId}/collage.png`;
+  const storageRef = ref(storage, storagePath);
+
+  await uploadBytes(storageRef, blob, {
+    contentType: 'image/png',
+    customMetadata: { roomId, uploadedBy: uid }
+  });
+
+  const downloadUrl = await getDownloadURL(storageRef);
+
+  await updateDoc(roomRef, {
+    collage: {
+      storagePath,
+      downloadUrl,
+      savedBy: role,
+      savedAt: serverTimestamp(),
+      layout: String(meta.layout || ''),
+      theme: String(meta.theme || ''),
+      format: String(meta.format || '')
+    },
+    status: 'completed',
+    updatedAt: serverTimestamp()
+  });
+
+  return downloadUrl;
+}
+
 export async function setRoomCompleted(roomId) {
   await updateDoc(doc(db, 'rooms', roomId), {
     status: 'completed',
@@ -334,6 +384,10 @@ export async function deleteRoomSession(roomId) {
       await deleteDoc(photoDoc.ref).catch(() => undefined);
     })
   );
+
+  // The published collage lives outside the photos subcollection, so it
+  // needs removing explicitly or it would outlive the booth in Storage.
+  await deleteObject(ref(storage, `photobooth/${roomId}/collage.png`)).catch(() => undefined);
 
   await deleteDoc(doc(db, 'rooms', roomId));
 }

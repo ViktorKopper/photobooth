@@ -28,6 +28,17 @@ service firebase.storage {
         );
     }
 
+    // The shared collage: one file per room, written by whichever partner
+    // publishes it and readable by both. Sits one level above the per-role
+    // photo folders so it doesn't collide with the rule below.
+    match /photobooth/{roomId}/collage.png {
+      allow read: if isParticipant(roomId);
+      allow create, update: if isParticipant(roomId)
+        && request.resource.size < 25 * 1024 * 1024
+        && request.resource.contentType.matches('image/png');
+      allow delete: if isParticipant(roomId);
+    }
+
     match /photobooth/{roomId}/{role}/{fileName} {
       allow read: if isParticipant(roomId);
       allow create, update: if ownsRole(roomId, role)

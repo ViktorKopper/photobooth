@@ -3,6 +3,7 @@ import { ensureAnonymousAuth } from './firebase.js';
 import { capturePhoto, startCamera, stopCamera } from './camera.js';
 import { COLLAGE_THEMES, EXPORT_PRESETS, generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
+import QRCode from 'qrcode';
 import { describeLocation, describeSearchResult, fetchWeather, searchCities } from './geo.js';
 import {
   expiredRoomIds,
@@ -17,6 +18,7 @@ import {
   createRoom,
   deleteRoomSession,
   joinRoom,
+  publishCollage,
   requestSyncCountdown,
   setReaction,
   setRoomCompleted,
@@ -48,16 +50,25 @@ import {
 
 const app = document.querySelector('#app');
 
-// How far in the future a sync-countdown request aims for, from the moment
-// Firestore resolves the request's server timestamp. Needs to comfortably
-// cover realtime propagation to both devices (usually well under a second)
-// plus a "get ready" moment before the visible 3-2-1 begins.
-const SYNC_LEAD_MS = 6000;
+// Head start before the visible countdown begins, measured from the moment
+// Firestore resolves the request's server timestamp. Covers realtime
+// propagation to both devices (usually well under a second) plus a "get
+// ready" beat. The chosen countdown length is added on top of this.
+const SYNC_LEAD_MS = 3000;
 
 // The day this became "us". Fixed rather than user-entered — every booth
 // counts from the same start, so the day count is a property of the couple,
 // not something to re-type per room.
 const ANNIVERSARY_DATE = '2026-01-13';
+
+// Countdown lengths offered before each shot. 3s is the quick "I'm already
+// in frame" case; 10s is enough to prop the phone up and walk into shot.
+const TIMER_OPTIONS = [3, 10];
+
+// One tick per second, so a timer labelled 10s actually lasts 10 seconds.
+// (The old countdown ran at 750ms, which nobody noticed over 3 numbers but
+// would quietly cost you 2.5s of running time over 10.)
+const COUNTDOWN_TICK_MS = 1000;
 
 const state = {
   user: null,
@@ -70,6 +81,7 @@ const state = {
   replacingIndex: null,
   facingMode: 'user',
   activeFilter: 'none',
+  timerSeconds: 3,
   customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
   myLocation: readStoredLocation(),
   citySearchResults: [],
@@ -646,11 +658,12 @@ function renderRoomShell() {
           <button type="button" class="secondary small" id="notifyToggleBtn">🔔 Enable notifications</button>
 
           <div class="share-box">
-            <label class="field-label">Share link</label>
-            <div class="copy-row">
-              <input class="text-input" id="shareLink" readonly value="${escapeAttr(roomLink(state.roomId))}" />
-              <button class="secondary" id="copyBtn">Copy</button>
+            <label class="field-label">Invite ${escapeHtml(ROLES[otherRole(state.role)]?.name || 'your partner')}</label>
+            <div class="qr-box">
+              <img id="joinQr" class="qr-image" alt="QR code linking to this booth" width="150" height="150" />
+              <p class="qr-code-text">${escapeHtml(state.roomId)}</p>
             </div>
+            <button class="secondary wide small" id="copyBtn">Copy link instead</button>
           </div>
 
           <div id="progressPanel" class="progress-panel"></div>
@@ -665,7 +678,15 @@ function renderRoomShell() {
             <div id="cameraError" class="camera-error hidden"></div>
           </div>
 
-          <div id="filterRow" class="filter-row">${buildFilterRow()}</div>
+          <div class="camera-controls">
+            <div id="filterRow" class="filter-row">${buildFilterRow()}</div>
+            <div class="timer-picker" role="group" aria-label="Countdown length">
+              ${TIMER_OPTIONS.map(
+                (seconds) =>
+                  `<button type="button" class="timer-option${seconds === state.timerSeconds ? ' active' : ''}" data-seconds="${seconds}">${seconds}s</button>`
+              ).join('')}
+            </div>
+          </div>
 
           <div id="previewPanel" class="preview-panel hidden">
             <div class="polaroid-preview">
@@ -728,6 +749,8 @@ function renderRoomShell() {
     renderLanding();
   });
 
+  renderJoinQr();
+
   document.querySelector('#copyBtn').addEventListener('click', async () => {
     await navigator.clipboard.writeText(roomLink(state.roomId));
     document.querySelector('#copyBtn').textContent = 'Copied';
@@ -741,6 +764,15 @@ function renderRoomShell() {
 
   document.querySelectorAll('.filter-swatch').forEach((button) => {
     button.addEventListener('click', () => selectFilter(button.dataset.filterId));
+  });
+
+  document.querySelectorAll('.timer-option').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.timerSeconds = Number(button.dataset.seconds);
+      document.querySelectorAll('.timer-option').forEach((option) => {
+        option.classList.toggle('active', option === button);
+      });
+    });
   });
 
   document.querySelector('#takePhotoBtn').addEventListener('click', takePhotoFlow);
@@ -784,6 +816,25 @@ function renderRoomShell() {
   document.querySelector('#captionEditorOverlay').addEventListener('click', (event) => {
     if (event.target.id === 'captionEditorOverlay') closeCaptionEditor();
   });
+}
+
+// Rendered locally rather than through any QR web service on purpose: the
+// room link is the only thing standing between a stranger and your photos,
+// so it must never be handed to a third-party image API to draw.
+async function renderJoinQr() {
+  const image = document.querySelector('#joinQr');
+  if (!image) return;
+
+  try {
+    image.src = await QRCode.toDataURL(roomLink(state.roomId), {
+      width: 300,
+      margin: 1,
+      color: { dark: '#5a2a35', light: '#ffffff' }
+    });
+  } catch {
+    // No QR is survivable — the Copy link button below it still works.
+    image.remove();
+  }
 }
 
 function selectFilter(filterId) {
@@ -1132,12 +1183,12 @@ async function takePhotoFlow() {
   cameraActions.classList.add('disabled');
   countdown.classList.remove('hidden');
 
-  for (const number of [3, 2, 1]) {
+  for (let number = state.timerSeconds; number >= 1; number -= 1) {
     countdown.textContent = number;
     countdown.classList.remove('pulse');
     void countdown.offsetWidth;
     countdown.classList.add('pulse');
-    await sleep(750);
+    await sleep(COUNTDOWN_TICK_MS);
   }
 
   await finishCaptureAfterCountdown();
@@ -1222,7 +1273,12 @@ async function requestSyncFlow() {
   }
 
   try {
-    await requestSyncCountdown({ roomId: state.roomId, uid: state.user.uid, role: state.role });
+    await requestSyncCountdown({
+      roomId: state.roomId,
+      uid: state.user.uid,
+      role: state.role,
+      seconds: state.timerSeconds
+    });
   } catch (error) {
     alert(error.message || 'Could not start the synced countdown.');
   }
@@ -1248,7 +1304,13 @@ function handleSyncCountdownChange() {
     notifyPartnerSyncRequest();
   }
 
-  scheduleSyncCountdown(requestedAtMs + SYNC_LEAD_MS);
+  // Older rooms have no `seconds` on the request; fall back to the classic
+  // 3-2-1 rather than counting down from undefined.
+  const seconds = Number.isFinite(sync.seconds) ? sync.seconds : 3;
+
+  // The visible countdown has to fit inside the lead time, plus a margin
+  // for the snapshot to reach both devices before the numbers start.
+  scheduleSyncCountdown(requestedAtMs + seconds * 1000 + SYNC_LEAD_MS, seconds);
 }
 
 // Schedules the visible 3-2-1 and the final shutter with independent
@@ -1256,7 +1318,7 @@ function handleSyncCountdownChange() {
 // the fixed target instant — rather than a chained/polled countdown, so
 // there's no compounding drift regardless of when this function itself
 // happens to run.
-function scheduleSyncCountdown(targetAtMs) {
+function scheduleSyncCountdown(targetAtMs, seconds = 3) {
   clearSyncTimers();
 
   const countdown = document.querySelector('#countdown');
@@ -1278,18 +1340,21 @@ function scheduleSyncCountdown(targetAtMs) {
     state.syncTimers.push(window.setTimeout(fn, Math.max(0, delay)));
   };
 
+  const countdownStartsAt = targetAtMs - seconds * 1000;
+
   const tickStatus = () => {
-    const remaining = targetAtMs - 3000 - Date.now();
+    const remaining = countdownStartsAt - Date.now();
     if (remaining > 0) {
-      showSyncStatus(`Synced countdown in ${Math.ceil((remaining + 3000) / 1000)}s...`);
+      showSyncStatus(`Get ready — countdown starts in ${Math.ceil(remaining / 1000)}s...`);
       state.syncTimers.push(window.setTimeout(tickStatus, 500));
     }
   };
   tickStatus();
 
-  scheduleAt(3000, () => showNumber(3));
-  scheduleAt(2000, () => showNumber(2));
-  scheduleAt(1000, () => showNumber(1));
+  for (let number = seconds; number >= 1; number -= 1) {
+    scheduleAt(number * 1000, () => showNumber(number));
+  }
+
   scheduleAt(0, () => finishCaptureAfterCountdown().then(() => {
     hideSyncStatus();
     // Whoever requested the sync clears it once it fires, returning the
@@ -1474,10 +1539,6 @@ async function toggleReactionFlow(ownerRole, index) {
   }
 }
 
-// Feature-detects the Web Share API's ability to share files (not just
-// text/links) — support varies a lot by browser, so the Share button is
-// only rendered when it will actually work, instead of showing a button
-// that fails on desktop browsers without file-sharing support.
 function buildSegmented(label, stateKey, options) {
   return `
     <div class="layout-control">
@@ -1494,6 +1555,10 @@ function buildSegmented(label, stateKey, options) {
   `;
 }
 
+// Feature-detects the Web Share API's ability to share files (not just
+// text/links) — support varies a lot by browser, so the Share button is
+// only rendered when it will actually work, instead of showing a button
+// that fails on desktop browsers without file-sharing support.
 function canShareFiles() {
   if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false;
   try {
@@ -1502,6 +1567,30 @@ function canShareFiles() {
   } catch {
     return false;
   }
+}
+
+// The collage published to the room, if any — the one artifact both of you
+// share, as opposed to whatever each browser happens to have rendered.
+function buildSharedCollageBlock() {
+  const collage = state.room?.collage;
+  if (!collage?.downloadUrl) return '';
+
+  const savedByMe = collage.savedBy === state.role;
+  const savedByName = ROLES[collage.savedBy]?.name || 'Someone';
+  const details = [collage.layout, collage.theme, collage.format]
+    .filter((value) => value && value !== 'original')
+    .join(' · ');
+
+  return `
+    <div class="shared-collage">
+      <p class="eyebrow">saved to this booth</p>
+      <img class="collage-preview" src="${escapeAttr(collage.downloadUrl)}" alt="Collage saved to this booth" />
+      <p class="shared-collage-meta">${escapeHtml(
+        savedByMe ? 'You saved this for both of you.' : `${savedByName} saved this for both of you.`
+      )}${details ? ` (${escapeHtml(details)})` : ''}</p>
+      <a class="secondary shared-collage-download" href="${escapeAttr(collage.downloadUrl)}" target="_blank" rel="noopener">Download the shared one</a>
+    </div>
+  `;
 }
 
 function renderCollageSection(canGenerate) {
@@ -1544,7 +1633,10 @@ function renderCollageSection(canGenerate) {
       <button class="primary" id="generateCollageBtn">Generate collage</button>
       <button class="secondary" id="downloadCollageBtn" ${state.collageBlob ? '' : 'disabled'}>Download PNG</button>
       <button class="secondary" id="shareCollageBtn" ${state.collageBlob ? '' : 'disabled'} ${canShareFiles() ? '' : 'hidden'}>Share</button>
+      <button class="secondary" id="publishCollageBtn" ${state.collageBlob ? '' : 'disabled'}>Save to booth</button>
     </div>
+
+    ${buildSharedCollageBlock()}
 
     <div class="danger-zone">
       <p class="danger-zone-label">Danger zone</p>
@@ -1576,7 +1668,44 @@ function renderCollageSection(canGenerate) {
     }
   });
   document.querySelector('#shareCollageBtn')?.addEventListener('click', shareCollageFlow);
+  document.querySelector('#publishCollageBtn')?.addEventListener('click', publishCollageFlow);
   document.querySelector('#deleteSessionBtn').addEventListener('click', deleteSessionFlow);
+}
+
+async function publishCollageFlow() {
+  if (!state.collageBlob) return;
+
+  const button = document.querySelector('#publishCollageBtn');
+  const existing = state.room?.collage?.downloadUrl;
+
+  if (existing) {
+    const savedByName = ROLES[state.room.collage.savedBy]?.name || 'Someone';
+    const confirmed = confirm(`${savedByName} already saved a collage to this booth. Replace it with yours?`);
+    if (!confirmed) return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Saving...';
+
+  try {
+    await publishCollage({
+      roomId: state.roomId,
+      uid: state.user.uid,
+      role: state.role,
+      blob: state.collageBlob,
+      meta: {
+        layout: state.collageLayout,
+        theme: state.collageTheme,
+        format: state.collageExport
+      }
+    });
+    showToast('Saved to the booth ♡');
+  } catch (error) {
+    alert(error.message || 'Could not save the collage to the booth.');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Save to booth';
+  }
 }
 
 async function shareCollageFlow() {

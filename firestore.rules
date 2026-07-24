@@ -77,6 +77,7 @@ service cloud.firestore {
         'customMessage',
         'anniversaryDate',
         'syncCountdown',
+        'collage',
         'participants'
       ]);
     }
@@ -105,9 +106,22 @@ service cloud.firestore {
         // below already restricts writes to the two known participants.
         && (!('syncCountdown' in data) || data.syncCountdown == null || (
           data.syncCountdown is map
-          && data.syncCountdown.keys().hasOnly(['requestedBy', 'requestedAt'])
+          && data.syncCountdown.keys().hasOnly(['requestedBy', 'requestedAt', 'seconds'])
           && data.syncCountdown.requestedBy in ['viktor', 'jericka']
           && data.syncCountdown.requestedAt is timestamp
+          && (!('seconds' in data.syncCountdown) || (
+            data.syncCountdown.seconds is int
+            && data.syncCountdown.seconds >= 1
+            && data.syncCountdown.seconds <= 30
+          ))
+        ))
+        // Optional — only set once someone publishes a collage to the room.
+        && (!('collage' in data) || data.collage == null || (
+          data.collage is map
+          && data.collage.keys().hasOnly(['storagePath', 'downloadUrl', 'savedBy', 'savedAt', 'layout', 'theme', 'format'])
+          && data.collage.storagePath is string
+          && data.collage.downloadUrl is string
+          && data.collage.savedBy in ['viktor', 'jericka']
         ));
     }
 

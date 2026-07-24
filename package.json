@@ -12,6 +12,7 @@
   "dependencies": {
     "@vitejs/plugin-basic-ssl": "latest",
     "firebase": "latest",
+    "qrcode": "^1.5.4",
     "vite": "latest"
   },
   "devDependencies": {}
