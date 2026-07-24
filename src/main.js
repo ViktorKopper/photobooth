@@ -2,6 +2,7 @@ import './styles.css';
 import { ensureAnonymousAuth } from './firebase.js';
 import { capturePhoto, startCamera, stopCamera } from './camera.js';
 import { generateCollage } from './collage.js';
+import { cssFromOps, findFilter, FILTERS } from './filters.js';
 import {
   createRoom,
   deleteRoomSession,
@@ -23,14 +24,6 @@ import {
   sleep
 } from './utils.js';
 
-const FILTERS = [
-  { id: 'none', label: 'Original', css: 'none' },
-  { id: 'warm', label: 'Teplý', css: 'sepia(0.25) saturate(1.3) brightness(1.05)' },
-  { id: 'bw', label: 'Čiernobiely', css: 'grayscale(1) contrast(1.1)' },
-  { id: 'vintage', label: 'Vintage', css: 'sepia(0.35) contrast(0.9) brightness(1.05) saturate(0.85)' },
-  { id: 'cool', label: 'Studený', css: 'hue-rotate(-8deg) saturate(1.15) brightness(1.02)' }
-];
-
 const app = document.querySelector('#app');
 
 const state = {
@@ -51,7 +44,7 @@ const state = {
 };
 
 function activeFilterCss() {
-  return FILTERS.find((filter) => filter.id === state.activeFilter)?.css || 'none';
+  return cssFromOps(findFilter(state.activeFilter).ops);
 }
 
 bootstrap();
@@ -461,7 +454,7 @@ function buildFilterRow() {
         type="button"
         class="filter-swatch${filter.id === state.activeFilter ? ' active' : ''}"
         data-filter-id="${filter.id}"
-        style="filter:${filter.css}"
+        style="filter:${cssFromOps(filter.ops)}"
         title="${escapeAttr(filter.label)}"
       >${escapeHtml(filter.label.slice(0, 2))}</button>
     `
@@ -556,7 +549,7 @@ async function takePhotoFlow() {
   countdown.classList.remove('pulse');
 
   try {
-    state.pendingCapture = await capturePhoto(video, state.facingMode, activeFilterCss());
+    state.pendingCapture = await capturePhoto(video, state.facingMode, findFilter(state.activeFilter).ops);
     state.pendingCapture.caption = '';
     document.querySelector('#photoPreview').src = state.pendingCapture.previewUrl;
     const captionInput = document.querySelector('#captionInput');

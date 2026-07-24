@@ -1,3 +1,5 @@
+import { bakeOpsIntoImageData } from './filters.js';
+
 let activeStream = null;
 
 export async function startCamera(videoElement, facingMode = 'user') {
@@ -58,7 +60,7 @@ export function stopCamera() {
   activeStream = null;
 }
 
-export async function capturePhoto(videoElement, facingMode = 'user', cssFilter = 'none') {
+export async function capturePhoto(videoElement, facingMode = 'user', filterOps = []) {
   const width = videoElement.videoWidth;
   const height = videoElement.videoHeight;
 
@@ -66,37 +68,32 @@ export async function capturePhoto(videoElement, facingMode = 'user', cssFilter 
     throw new Error('Camera is not ready yet. Wait a second and try again.');
   }
 
-  // Pass 1: draw the raw video frame onto an off-screen canvas, unfiltered.
-  // Some mobile browsers silently skip a canvas 2D `filter` when the
-  // drawImage() source is a live <video> element (a GPU compositing
-  // shortcut that doesn't apply to canvas/image sources) — the filter
-  // looked fine in the live preview but never made it into the captured
-  // frame. Drawing raw first and filtering in a second canvas-to-canvas
-  // pass below sidesteps that and bakes the effect in reliably.
-  const rawCanvas = document.createElement('canvas');
-  rawCanvas.width = width;
-  rawCanvas.height = height;
-  const rawContext = rawCanvas.getContext('2d');
-
-  if (facingMode === 'user') {
-    rawContext.translate(width, 0);
-    rawContext.scale(-1, 1);
-  }
-
-  rawContext.drawImage(videoElement, 0, 0, width, height);
-
-  // Pass 2: draw that canvas frame onto the final canvas with the filter
-  // applied, so the uploaded photo matches what was shown on screen without
-  // needing to store filter metadata separately or re-apply it later in
-  // the collage.
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
 
   const context = canvas.getContext('2d');
-  context.filter = cssFilter || 'none';
-  context.drawImage(rawCanvas, 0, 0);
-  context.filter = 'none';
+
+  if (facingMode === 'user') {
+    context.translate(width, 0);
+    context.scale(-1, 1);
+  }
+
+  context.drawImage(videoElement, 0, 0, width, height);
+
+  // Bake the chosen filter by manipulating raw pixel data directly, instead
+  // of relying on the canvas 2D `filter` property. Support and behavior for
+  // that property is inconsistent enough across mobile Safari/WebViews —
+  // and it can be skipped entirely when the drawImage() source is a live
+  // <video> element — that a photo could look filtered in the live preview
+  // (CSS `filter` on the video tag, which is reliable) while the actual
+  // saved/uploaded file silently wasn't. Plain ImageData math has no such
+  // gaps: it always runs, on every browser.
+  if (filterOps.length) {
+    const imageData = context.getImageData(0, 0, width, height);
+    bakeOpsIntoImageData(imageData, filterOps);
+    context.putImageData(imageData, 0, 0);
+  }
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
