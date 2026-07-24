@@ -24,28 +24,30 @@ function blankParticipant() {
     joined: false,
     photoCount: 0,
     completed: false,
-    lastActiveAt: null
+    lastActiveAt: null,
+    location: null
   };
 }
 
-function participantFor(uid) {
+function participantFor(uid, location = null) {
   return {
     uid,
     joined: true,
     photoCount: 0,
     completed: false,
-    lastActiveAt: serverTimestamp()
+    lastActiveAt: serverTimestamp(),
+    location: location || null
   };
 }
 
-export async function createRoom({ uid, role, customMessage, anniversaryDate = null }) {
+export async function createRoom({ uid, role, customMessage, anniversaryDate = null, location = null }) {
   const roomId = generateRoomId();
   const participants = {
     viktor: blankParticipant(),
     jericka: blankParticipant()
   };
 
-  participants[role] = participantFor(uid);
+  participants[role] = participantFor(uid, location);
 
   await setDoc(doc(db, 'rooms', roomId), {
     createdAt: serverTimestamp(),
@@ -61,7 +63,7 @@ export async function createRoom({ uid, role, customMessage, anniversaryDate = n
   return roomId;
 }
 
-export async function joinRoom({ roomId, uid, role }) {
+export async function joinRoom({ roomId, uid, role, location = null }) {
   const roomRef = doc(db, 'rooms', roomId);
   const snapshot = await getDoc(roomRef);
 
@@ -88,8 +90,31 @@ export async function joinRoom({ roomId, uid, role }) {
     [`participants.${role}.uid`]: uid,
     [`participants.${role}.joined`]: true,
     [`participants.${role}.lastActiveAt`]: serverTimestamp(),
+    // Only overwrite a previously stored city when this browser actually
+    // has one to offer, so rejoining without re-picking never wipes it.
+    [`participants.${role}.location`]: location || participant?.location || null,
     updatedAt: serverTimestamp(),
     status: nextStatus
+  });
+}
+
+// Lets someone set (or change) their own city after the room already
+// exists — e.g. they joined before picking one, or moved.
+export async function updateLocation({ roomId, uid, role, location }) {
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnapshot = await getDoc(roomRef);
+
+  if (!roomSnapshot.exists()) {
+    throw new Error('Room no longer exists.');
+  }
+
+  if (roomSnapshot.data().participants?.[role]?.uid !== uid) {
+    throw new Error('This browser is not connected as this person in the room.');
+  }
+
+  await updateDoc(roomRef, {
+    [`participants.${role}.location`]: location || null,
+    updatedAt: serverTimestamp()
   });
 }
 

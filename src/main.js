@@ -3,6 +3,7 @@ import { ensureAnonymousAuth } from './firebase.js';
 import { capturePhoto, startCamera, stopCamera } from './camera.js';
 import { generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
+import { describeLocation, describeSearchResult, searchCities } from './geo.js';
 import {
   clearSyncCountdown,
   createRoom,
@@ -12,14 +13,19 @@ import {
   setReaction,
   setRoomCompleted,
   updateCaption,
+  updateLocation,
   uploadPhoto,
   watchPhotos,
   watchRoom
 } from './room.js';
 import {
   daysTogether,
+  distanceBetween,
   downloadBlob,
+  formatDistanceKm,
   getRoomIdFromUrl,
+  hourOffsetBetween,
+  isUsableLocation,
   normalizeRoomCode,
   otherRole,
   roomLink,
@@ -27,7 +33,9 @@ import {
   sanitizeAnniversaryDate,
   sanitizeCaption,
   sanitizeCollageMessage,
-  sleep
+  sanitizeLocation,
+  sleep,
+  timeInZone
 } from './utils.js';
 
 const app = document.querySelector('#app');
@@ -50,14 +58,35 @@ const state = {
   activeFilter: 'none',
   customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
   anniversaryDate: localStorage.getItem('photobooth-anniversary') || '',
+  myLocation: readStoredLocation(),
+  citySearchResults: [],
+  citySearchToken: 0,
   collageBlob: null,
   collagePreviewUrl: null,
   unsubscribeRoom: null,
   unsubscribePhotos: null,
   cameraStarted: false,
   syncScheduledFor: null,
-  syncTimers: []
+  syncTimers: [],
+  clockTimer: null
 };
+
+function readStoredLocation() {
+  try {
+    return sanitizeLocation(JSON.parse(localStorage.getItem('photobooth-location') || 'null'));
+  } catch {
+    return null;
+  }
+}
+
+function storeMyLocation(location) {
+  state.myLocation = sanitizeLocation(location);
+  if (state.myLocation) {
+    localStorage.setItem('photobooth-location', JSON.stringify(state.myLocation));
+  } else {
+    localStorage.removeItem('photobooth-location');
+  }
+}
 
 function activeFilterCss() {
   return cssFromOps(findFilter(state.activeFilter).ops);
@@ -219,6 +248,19 @@ function renderLanding() {
         />
         <p id="anniversaryPreview" class="anniversary-line${state.anniversaryDate ? '' : ' hidden'}">${anniversaryPreviewText()}</p>
 
+        <label class="field-label" for="cityInput">Your city (optional)</label>
+        <div class="city-picker">
+          <input
+            id="cityInput"
+            class="text-input"
+            placeholder="Start typing a city..."
+            autocomplete="off"
+            value="${escapeAttr(describeLocation(state.myLocation))}"
+          />
+          <div id="cityResults" class="city-results hidden"></div>
+        </div>
+        <p id="cityPreview" class="anniversary-line${state.myLocation ? '' : ' hidden'}">${cityPreviewText()}</p>
+
         <div class="action-row">
           <button class="primary" id="createBtn">Create new booth</button>
           <button class="secondary" id="joinBtn">Join booth</button>
@@ -241,8 +283,109 @@ function renderLanding() {
     preview.classList.toggle('hidden', !state.anniversaryDate);
   });
 
+  wireCityPicker();
+
   document.querySelector('#createBtn').addEventListener('click', () => renderRoleGate('create'));
   document.querySelector('#joinBtn').addEventListener('click', () => renderJoinByCode());
+}
+
+function cityPreviewText() {
+  if (!state.myLocation) return '';
+  const now = timeInZone(state.myLocation.timezone);
+  const clock = now ? ` — ${now.isNight ? '🌙' : '☀️'} ${now.label} local` : '';
+  return `📍 ${describeLocation(state.myLocation)}${clock}`;
+}
+
+// Debounced city search with a monotonically increasing token, so a slow
+// earlier request can never overwrite the results of a newer keystroke.
+function wireCityPicker() {
+  const input = document.querySelector('#cityInput');
+  const results = document.querySelector('#cityResults');
+  const preview = document.querySelector('#cityPreview');
+  if (!input || !results) return;
+
+  let debounce = null;
+
+  const closeResults = () => {
+    results.classList.add('hidden');
+    results.innerHTML = '';
+  };
+
+  const refreshPreview = () => {
+    preview.textContent = cityPreviewText();
+    preview.classList.toggle('hidden', !state.myLocation);
+  };
+
+  input.addEventListener('input', () => {
+    const query = input.value.trim();
+
+    // Typing again after picking invalidates the stored pick until a new
+    // suggestion is chosen — otherwise a half-typed city would silently
+    // keep the previous coordinates.
+    if (state.myLocation && query !== describeLocation(state.myLocation)) {
+      storeMyLocation(null);
+      refreshPreview();
+    }
+
+    window.clearTimeout(debounce);
+
+    if (query.length < 2) {
+      closeResults();
+      return;
+    }
+
+    debounce = window.setTimeout(async () => {
+      const token = ++state.citySearchToken;
+      results.classList.remove('hidden');
+      results.innerHTML = '<div class="city-result-empty">Searching...</div>';
+
+      try {
+        const found = await searchCities(query);
+        if (token !== state.citySearchToken) return;
+
+        state.citySearchResults = found;
+
+        if (!found.length) {
+          results.innerHTML = '<div class="city-result-empty">No cities found.</div>';
+          return;
+        }
+
+        results.innerHTML = found
+          .map(
+            (item, index) =>
+              `<button type="button" class="city-result" data-index="${index}">${escapeHtml(describeSearchResult(item))}</button>`
+          )
+          .join('');
+      } catch {
+        if (token !== state.citySearchToken) return;
+        results.innerHTML = '<div class="city-result-empty">City lookup unavailable right now.</div>';
+      }
+    }, 300);
+  });
+
+  results.addEventListener('click', (event) => {
+    const button = event.target.closest('.city-result');
+    if (!button) return;
+
+    const picked = state.citySearchResults[Number(button.dataset.index)];
+    if (!picked) return;
+
+    storeMyLocation(picked);
+    input.value = describeLocation(state.myLocation);
+    closeResults();
+    refreshPreview();
+  });
+
+  // renderLanding() can run repeatedly (leaving a room returns here), so the
+  // previous document-level handler is detached first — otherwise every
+  // visit would stack another listener holding a stale DOM reference.
+  if (wireCityPicker.outsideHandler) {
+    document.removeEventListener('click', wireCityPicker.outsideHandler);
+  }
+  wireCityPicker.outsideHandler = (event) => {
+    if (!event.target.closest('.city-picker')) closeResults();
+  };
+  document.addEventListener('click', wireCityPicker.outsideHandler);
 }
 
 function renderJoinByCode() {
@@ -318,11 +461,17 @@ function renderRoleGate(mode) {
             uid: state.user.uid,
             role: state.role,
             customMessage: sanitizeCollageMessage(state.customMessage),
-            anniversaryDate: sanitizeAnniversaryDate(state.anniversaryDate)
+            anniversaryDate: sanitizeAnniversaryDate(state.anniversaryDate),
+            location: sanitizeLocation(state.myLocation)
           });
           window.history.replaceState({}, '', `?room=${state.roomId}`);
         } else {
-          await joinRoom({ roomId: state.roomId, uid: state.user.uid, role: state.role });
+          await joinRoom({
+            roomId: state.roomId,
+            uid: state.user.uid,
+            role: state.role,
+            location: sanitizeLocation(state.myLocation)
+          });
           window.history.replaceState({}, '', `?room=${state.roomId}`);
         }
 
@@ -361,6 +510,9 @@ async function enterRoom() {
     renderFatalError
   );
 
+  startClockTicker();
+  syncMyLocationToRoom();
+
   await startCurrentCamera();
 }
 
@@ -382,6 +534,7 @@ function renderRoomShell() {
           <h2>Booth status</h2>
           <p>You are connected as <strong>${roleName}</strong>.</p>
           <p id="anniversaryLine" class="anniversary-line hidden"></p>
+          <div id="distancePanel" class="distance-panel hidden"></div>
           <button type="button" class="secondary small" id="notifyToggleBtn">🔔 Enable notifications</button>
 
           <div class="share-box">
@@ -612,6 +765,95 @@ function buildThumbRow(role) {
   return `<div class="thumb-row thumb-row-${role}">${slots.join('')}</div>`;
 }
 
+// Draws the two cities as endpoints of a curved arc — the visual shorthand
+// for a long-haul flight path — with each side's live local time and a
+// sun/moon marker, and the distance riding on the curve itself.
+function renderDistancePanel() {
+  const panel = document.querySelector('#distancePanel');
+  if (!panel || !state.room) return;
+
+  const myRole = state.role;
+  const theirRole = otherRole(myRole);
+  const mine = state.room.participants?.[myRole]?.location;
+  const theirs = state.room.participants?.[theirRole]?.location;
+
+  if (!isUsableLocation(mine) && !isUsableLocation(theirs)) {
+    panel.classList.add('hidden');
+    panel.innerHTML = '';
+    return;
+  }
+
+  panel.classList.remove('hidden');
+
+  // Only one side has picked a city so far — show what we have plus a
+  // gentle nudge, rather than an empty or broken-looking arc.
+  if (!isUsableLocation(mine) || !isUsableLocation(theirs)) {
+    const known = isUsableLocation(mine) ? mine : theirs;
+    const knownRole = isUsableLocation(mine) ? myRole : theirRole;
+    const clock = timeInZone(known.timezone);
+
+    panel.innerHTML = `
+      <div class="distance-single">
+        <span class="distance-city">📍 ${escapeHtml(describeLocation(known))}</span>
+        ${clock ? `<span class="distance-clock">${clock.isNight ? '🌙' : '☀️'} ${escapeHtml(clock.label)}</span>` : ''}
+      </div>
+      <p class="distance-hint">${escapeHtml(
+        knownRole === myRole
+          ? `Waiting for ${ROLES[theirRole].name} to add their city.`
+          : 'Add your own city to see the distance between you.'
+      )}</p>
+    `;
+    return;
+  }
+
+  const km = distanceBetween(mine, theirs);
+  const myClock = timeInZone(mine.timezone);
+  const theirClock = timeInZone(theirs.timezone);
+  const offset = hourOffsetBetween(mine.timezone, theirs.timezone);
+
+  const offsetLabel = offset === 0
+    ? 'same time zone'
+    : `${Math.abs(offset)}h ${offset > 0 ? 'ahead' : 'behind'}`;
+
+  const dot = (role, clock) => `
+    <div class="distance-side">
+      <span class="distance-dot distance-dot-${role}">${clock?.isNight ? '🌙' : '☀️'}</span>
+      <strong class="distance-time">${clock ? escapeHtml(clock.label) : '--:--'}</strong>
+      <span class="distance-city">${escapeHtml(describeLocation(role === myRole ? mine : theirs))}</span>
+      <span class="distance-who">${escapeHtml(ROLES[role].name)}</span>
+    </div>
+  `;
+
+  panel.innerHTML = `
+    <div class="distance-visual">
+      ${dot(myRole, myClock)}
+      <div class="distance-arc">
+        <svg viewBox="0 0 120 48" aria-hidden="true">
+          <path d="M6 40 Q60 -6 114 40" fill="none" stroke="rgba(199,52,90,0.45)" stroke-width="2" stroke-dasharray="5 4" />
+          <circle cx="6" cy="40" r="4" fill="var(--viktor)" />
+          <circle cx="114" cy="40" r="4" fill="var(--jericka)" />
+          <text x="60" y="20" text-anchor="middle" font-size="13" fill="#c7345a">♥</text>
+        </svg>
+        <span class="distance-km">${escapeHtml(formatDistanceKm(km))}</span>
+      </div>
+      ${dot(theirRole, theirClock)}
+    </div>
+    <p class="distance-hint">${escapeHtml(`${ROLES[theirRole].name} is ${offsetLabel}`)}</p>
+  `;
+}
+
+// Local times drift while the room stays open, so nudge the panel every
+// half minute. Cheap: it only rewrites the small status-card block.
+function startClockTicker() {
+  stopClockTicker();
+  state.clockTimer = window.setInterval(renderDistancePanel, 30000);
+}
+
+function stopClockTicker() {
+  if (state.clockTimer) window.clearInterval(state.clockTimer);
+  state.clockTimer = null;
+}
+
 function updateRoomView() {
   if (!state.room) return;
 
@@ -621,6 +863,8 @@ function updateRoomView() {
     anniversaryLine.textContent = count ? `💕 Together for ${formatDays(count)}` : '';
     anniversaryLine.classList.toggle('hidden', !count);
   }
+
+  renderDistancePanel();
 
   const viktorCount = state.room.participants?.viktor?.photoCount || 0;
   const jerickaCount = state.room.participants?.jericka?.photoCount || 0;
@@ -1145,7 +1389,11 @@ async function generateCollageFlow() {
       layout,
       roomId: state.roomId,
       scale,
-      anniversaryDate: state.room?.anniversaryDate || ''
+      anniversaryDate: state.room?.anniversaryDate || '',
+      locations: {
+        viktor: state.room?.participants?.viktor?.location || null,
+        jericka: state.room?.participants?.jericka?.location || null
+      }
     });
 
     state.collageBlob = result.blob;
@@ -1183,7 +1431,23 @@ function stopSubscriptions() {
   state.unsubscribeRoom = null;
   state.unsubscribePhotos = null;
   clearSyncTimers();
+  stopClockTicker();
   state.syncScheduledFor = null;
+}
+
+// Backfills the room with this browser's stored city if the room doesn't
+// have one for us yet — covers rejoining an older room that was created
+// before a city was ever picked.
+async function syncMyLocationToRoom() {
+  const mine = sanitizeLocation(state.myLocation);
+  if (!mine) return;
+  if (isUsableLocation(state.room?.participants?.[state.role]?.location)) return;
+
+  try {
+    await updateLocation({ roomId: state.roomId, uid: state.user.uid, role: state.role, location: mine });
+  } catch (error) {
+    console.error('Could not save location', error);
+  }
 }
 
 function showInlineError(inputId, message) {

@@ -41,8 +41,30 @@ service cloud.firestore {
         : (room(roomId).participants.jericka.uid == request.auth.uid ? 'jericka' : null);
     }
 
+    // `location` is optional — rooms created before this field existed
+    // simply don't carry it — but must be well-formed when present.
+    function validLocation(data) {
+      return !('location' in data) || data.location == null || (
+        data.location is map
+        && data.location.keys().hasOnly(['name', 'country', 'latitude', 'longitude', 'timezone'])
+        && data.location.name is string
+        && data.location.name.size() <= 60
+        && data.location.country is string
+        && data.location.country.size() <= 60
+        && data.location.latitude is number
+        && data.location.latitude >= -90
+        && data.location.latitude <= 90
+        && data.location.longitude is number
+        && data.location.longitude >= -180
+        && data.location.longitude <= 180
+        && data.location.timezone is string
+        && data.location.timezone.size() <= 60
+      );
+    }
+
     function participantKeysAreValid(data) {
-      return data.keys().hasOnly(['uid', 'joined', 'photoCount', 'completed', 'lastActiveAt']);
+      return data.keys().hasOnly(['uid', 'joined', 'photoCount', 'completed', 'lastActiveAt', 'location'])
+        && validLocation(data);
     }
 
     function roomKeysAreValid(data) {

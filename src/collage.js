@@ -1,4 +1,4 @@
-import { clamp, daysTogether, formatDate } from './utils.js';
+import { clamp, daysTogether, distanceBetween, formatDate, formatDistanceKm } from './utils.js';
 
 const PALETTE = {
   bgTop: '#fff7f4',
@@ -421,7 +421,7 @@ function drawHeaderBlock(ctx, {
   drawHeartAt(ctx, centerX + heartOffset, messageY - heartSize * 0.5, heartSize, PALETTE.message);
 }
 
-function drawFooter(ctx, { centerX, y, roomId, dayCount }) {
+function drawFooter(ctx, { centerX, y, roomId, dayCount, distanceLabel }) {
   ctx.textAlign = 'center';
   ctx.fillStyle = PALETTE.meta;
   ctx.font = '26px Inter, Arial, sans-serif';
@@ -429,6 +429,7 @@ function drawFooter(ctx, { centerX, y, roomId, dayCount }) {
   const parts = [];
   if (roomId) parts.push(`Booth ${roomId}`);
   if (dayCount) parts.push(`Day ${dayCount} together`);
+  if (distanceLabel) parts.push(`${distanceLabel} apart`);
   parts.push(formatDate());
 
   ctx.fillText(parts.join('  ·  '), centerX, y);
@@ -595,7 +596,7 @@ function computeGridDimensions() {
 
 function drawGridLayout(ctx, dims, payload) {
   const { width, marginX, gap, top, cardWidth, cardHeight, bottomLabelY, footerY } = dims;
-  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount } = payload;
+  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount, distanceLabel } = payload;
 
   drawPageBackground(ctx, dims.width, dims.height);
 
@@ -647,7 +648,7 @@ function drawGridLayout(ctx, dims, payload) {
   ctx.fillText('Viktor', marginX + cardWidth / 2, bottomLabelY);
   ctx.fillText('Jericka', marginX + cardWidth + gap + cardWidth / 2, bottomLabelY);
 
-  drawFooter(ctx, { centerX: width / 2, y: footerY, roomId, dayCount });
+  drawFooter(ctx, { centerX: width / 2, y: footerY, roomId, dayCount, distanceLabel });
 }
 
 function computeStripDimensions() {
@@ -682,7 +683,7 @@ function computeStripDimensions() {
 
 function drawStripLayout(ctx, dims, payload) {
   const { width, height, headerHeight, framePadding, photoWidth, photoHeight, gap, roundGap, rounds, cardX, footerHeight } = dims;
-  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount } = payload;
+  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount, distanceLabel } = payload;
 
   drawPageBackground(ctx, width, height);
 
@@ -747,7 +748,7 @@ function drawStripLayout(ctx, dims, payload) {
   ctx.textAlign = 'center';
   ctx.fillText('Viktor  ♡  Jericka', width / 2, footerY - 20);
 
-  drawFooter(ctx, { centerX: width / 2, y: footerY + 18, roomId, dayCount });
+  drawFooter(ctx, { centerX: width / 2, y: footerY + 18, roomId, dayCount, distanceLabel });
 }
 
 function computeHeroDimensions() {
@@ -785,7 +786,7 @@ function computeHeroDimensions() {
 
 function drawHeroLayout(ctx, dims, payload) {
   const { width, height, heroSize, heroX, heroY, smallWidth, smallHeight, smallGap, marginX, smallY } = dims;
-  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount } = payload;
+  const { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount, distanceLabel } = payload;
 
   drawPageBackground(ctx, width, height);
 
@@ -854,10 +855,18 @@ function drawHeroLayout(ctx, dims, payload) {
   ctx.textAlign = 'center';
   ctx.fillText('Viktor  ♡  Jericka', width / 2, labelY);
 
-  drawFooter(ctx, { centerX: width / 2, y: labelY + 45, roomId, dayCount });
+  drawFooter(ctx, { centerX: width / 2, y: labelY + 45, roomId, dayCount, distanceLabel });
 }
 
-export async function generateCollage({ photos, customMessage, layout = 'grid', roomId = '', scale = 1, anniversaryDate = '' }) {
+export async function generateCollage({
+  photos,
+  customMessage,
+  layout = 'grid',
+  roomId = '',
+  scale = 1,
+  anniversaryDate = '',
+  locations = null
+}) {
   const { viktor, jericka } = splitPhotosByOwner(photos);
   const { viktorItems, jerickaItems } = await loadOwnerImages(viktor, jericka);
   const handwritingReady = await ensureHandwritingFont();
@@ -865,7 +874,9 @@ export async function generateCollage({ photos, customMessage, layout = 'grid', 
 
   const message = customMessage || 'Our little photobooth memory';
   const dayCount = daysTogether(anniversaryDate);
-  const payload = { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount };
+  const km = locations ? distanceBetween(locations.viktor, locations.jericka) : null;
+  const distanceLabel = km != null ? formatDistanceKm(km) : '';
+  const payload = { viktorItems, jerickaItems, message, roomId, handwritingReady, markerReady, dayCount, distanceLabel };
 
   let dims;
   let drawFn;
