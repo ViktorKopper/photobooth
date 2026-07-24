@@ -30,7 +30,6 @@ import {
   otherRole,
   roomLink,
   ROLES,
-  sanitizeAnniversaryDate,
   sanitizeCaption,
   sanitizeCollageMessage,
   sanitizeLocation,
@@ -46,6 +45,11 @@ const app = document.querySelector('#app');
 // plus a "get ready" moment before the visible 3-2-1 begins.
 const SYNC_LEAD_MS = 6000;
 
+// The day this became "us". Fixed rather than user-entered — every booth
+// counts from the same start, so the day count is a property of the couple,
+// not something to re-type per room.
+const ANNIVERSARY_DATE = '2026-01-13';
+
 const state = {
   user: null,
   roomId: getRoomIdFromUrl(),
@@ -57,7 +61,6 @@ const state = {
   facingMode: 'user',
   activeFilter: 'none',
   customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
-  anniversaryDate: localStorage.getItem('photobooth-anniversary') || '',
   myLocation: readStoredLocation(),
   citySearchResults: [],
   citySearchToken: 0,
@@ -92,16 +95,12 @@ function activeFilterCss() {
   return cssFromOps(findFilter(state.activeFilter).ops);
 }
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function formatDays(count) {
   return count === 1 ? '1 day' : `${count} days`;
 }
 
-function anniversaryPreviewText() {
-  const count = daysTogether(state.anniversaryDate);
+function togetherLine(anniversaryDate = ANNIVERSARY_DATE) {
+  const count = daysTogether(anniversaryDate);
   return count ? `💕 Together for ${formatDays(count)}` : '';
 }
 
@@ -234,21 +233,12 @@ function renderLanding() {
         <p class="eyebrow">private long-distance couple photobooth</p>
         <h1>Viktor & Jericka Photobooth</h1>
         <p class="hero-text">Even far apart, we can still make memories together.</p>
+        <p class="anniversary-line">${escapeHtml(togetherLine())}</p>
 
         <label class="field-label" for="messageInput">Collage message</label>
         <input id="messageInput" class="text-input" maxlength="80" value="${escapeAttr(state.customMessage)}" />
 
-        <label class="field-label" for="anniversaryInput">Together since (optional)</label>
-        <input
-          id="anniversaryInput"
-          type="date"
-          class="text-input"
-          value="${escapeAttr(state.anniversaryDate)}"
-          max="${todayIso()}"
-        />
-        <p id="anniversaryPreview" class="anniversary-line${state.anniversaryDate ? '' : ' hidden'}">${anniversaryPreviewText()}</p>
-
-        <label class="field-label" for="cityInput">Your city (optional)</label>
+        <label class="field-label" for="cityInput">Your city</label>
         <div class="city-picker">
           <input
             id="cityInput"
@@ -274,15 +264,6 @@ function renderLanding() {
     localStorage.setItem('photobooth-message', state.customMessage);
   });
 
-  document.querySelector('#anniversaryInput').addEventListener('input', (event) => {
-    state.anniversaryDate = sanitizeAnniversaryDate(event.target.value);
-    localStorage.setItem('photobooth-anniversary', state.anniversaryDate);
-
-    const preview = document.querySelector('#anniversaryPreview');
-    preview.textContent = anniversaryPreviewText();
-    preview.classList.toggle('hidden', !state.anniversaryDate);
-  });
-
   wireCityPicker();
 
   document.querySelector('#createBtn').addEventListener('click', () => renderRoleGate('create'));
@@ -298,7 +279,7 @@ function cityPreviewText() {
 
 // Debounced city search with a monotonically increasing token, so a slow
 // earlier request can never overwrite the results of a newer keystroke.
-function wireCityPicker() {
+function wireCityPicker(onChange = () => {}) {
   const input = document.querySelector('#cityInput');
   const results = document.querySelector('#cityResults');
   const preview = document.querySelector('#cityPreview');
@@ -314,6 +295,7 @@ function wireCityPicker() {
   const refreshPreview = () => {
     preview.textContent = cityPreviewText();
     preview.classList.toggle('hidden', !state.myLocation);
+    onChange();
   };
 
   input.addEventListener('input', () => {
@@ -450,37 +432,94 @@ function renderRoleGate(mode) {
   });
 
   document.querySelectorAll('.role-card').forEach((button) => {
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', () => {
       state.role = button.dataset.role;
       localStorage.setItem('photobooth-role', state.role);
-      renderLoading(isCreate ? 'Creating your booth...' : 'Joining your booth...');
 
-      try {
-        if (isCreate) {
-          state.roomId = await createRoom({
-            uid: state.user.uid,
-            role: state.role,
-            customMessage: sanitizeCollageMessage(state.customMessage),
-            anniversaryDate: sanitizeAnniversaryDate(state.anniversaryDate),
-            location: sanitizeLocation(state.myLocation)
-          });
-          window.history.replaceState({}, '', `?room=${state.roomId}`);
-        } else {
-          await joinRoom({
-            roomId: state.roomId,
-            uid: state.user.uid,
-            role: state.role,
-            location: sanitizeLocation(state.myLocation)
-          });
-          window.history.replaceState({}, '', `?room=${state.roomId}`);
-        }
-
-        await enterRoom();
-      } catch (error) {
-        renderFatalError(error);
+      // A city is required before entering. Someone opening a shared link
+      // skips the landing page entirely, so this gate is the only place
+      // they'd ever be asked — without it they'd join with no location and
+      // the distance panel could never work.
+      if (!isUsableLocation(state.myLocation)) {
+        renderLocationGate(mode);
+        return;
       }
+
+      enterBooth(isCreate);
     });
   });
+}
+
+function renderLocationGate(mode) {
+  const isCreate = mode === 'create';
+
+  setApp(`
+    <main class="shell center-shell">
+      <section class="card hero-card fade-in">
+        <button class="ghost back-btn" id="backBtn">← Back</button>
+        <div class="heart-badge">📍</div>
+        <h1>Where are you right now?</h1>
+        <p>We use this to show each other's local time and how far apart you are.</p>
+
+        <label class="field-label" for="cityInput">Your city</label>
+        <div class="city-picker">
+          <input
+            id="cityInput"
+            class="text-input"
+            placeholder="Start typing a city..."
+            autocomplete="off"
+            autofocus
+            value="${escapeAttr(describeLocation(state.myLocation))}"
+          />
+          <div id="cityResults" class="city-results hidden"></div>
+        </div>
+        <p id="cityPreview" class="anniversary-line${state.myLocation ? '' : ' hidden'}">${cityPreviewText()}</p>
+
+        <button class="primary wide" id="locationContinueBtn" ${state.myLocation ? '' : 'disabled'}>Continue</button>
+      </section>
+    </main>
+  `);
+
+  const continueBtn = document.querySelector('#locationContinueBtn');
+
+  wireCityPicker(() => {
+    continueBtn.disabled = !isUsableLocation(state.myLocation);
+  });
+
+  document.querySelector('#backBtn').addEventListener('click', () => renderRoleGate(mode));
+
+  continueBtn.addEventListener('click', () => {
+    if (!isUsableLocation(state.myLocation)) return;
+    enterBooth(isCreate);
+  });
+}
+
+async function enterBooth(isCreate) {
+  renderLoading(isCreate ? 'Creating your booth...' : 'Joining your booth...');
+
+  try {
+    if (isCreate) {
+      state.roomId = await createRoom({
+        uid: state.user.uid,
+        role: state.role,
+        customMessage: sanitizeCollageMessage(state.customMessage),
+        anniversaryDate: ANNIVERSARY_DATE,
+        location: sanitizeLocation(state.myLocation)
+      });
+    } else {
+      await joinRoom({
+        roomId: state.roomId,
+        uid: state.user.uid,
+        role: state.role,
+        location: sanitizeLocation(state.myLocation)
+      });
+    }
+
+    window.history.replaceState({}, '', `?room=${state.roomId}`);
+    await enterRoom();
+  } catch (error) {
+    renderFatalError(error);
+  }
 }
 
 async function enterRoom() {
@@ -859,9 +898,11 @@ function updateRoomView() {
 
   const anniversaryLine = document.querySelector('#anniversaryLine');
   if (anniversaryLine) {
-    const count = daysTogether(state.room.anniversaryDate);
-    anniversaryLine.textContent = count ? `💕 Together for ${formatDays(count)}` : '';
-    anniversaryLine.classList.toggle('hidden', !count);
+    // Falls back to the constant so rooms created before the date was
+    // fixed still show the count.
+    const line = togetherLine(state.room.anniversaryDate || ANNIVERSARY_DATE);
+    anniversaryLine.textContent = line;
+    anniversaryLine.classList.toggle('hidden', !line);
   }
 
   renderDistancePanel();
@@ -1389,7 +1430,7 @@ async function generateCollageFlow() {
       layout,
       roomId: state.roomId,
       scale,
-      anniversaryDate: state.room?.anniversaryDate || '',
+      anniversaryDate: state.room?.anniversaryDate || ANNIVERSARY_DATE,
       locations: {
         viktor: state.room?.participants?.viktor?.location || null,
         jericka: state.room?.participants?.jericka?.location || null
