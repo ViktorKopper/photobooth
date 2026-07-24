@@ -179,6 +179,31 @@ export async function uploadPhoto({ roomId, uid, role, index, blob, caption = ''
   });
 }
 
+export async function updateCaption({ roomId, uid, role, index, caption }) {
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnapshot = await getDoc(roomRef);
+
+  if (!roomSnapshot.exists()) {
+    throw new Error('Room no longer exists.');
+  }
+
+  const participant = roomSnapshot.data().participants?.[role];
+
+  if (participant?.uid !== uid) {
+    throw new Error('This browser is not connected as this person in the room.');
+  }
+
+  const safeIndex = Math.max(1, Math.min(index, 3));
+
+  // A caption-only update — everything else on the photo doc (owner,
+  // storagePath, downloadUrl...) stays untouched. Firestore rules already
+  // validate the resulting document shape, so no separate write path is
+  // needed for the size/ownership checks.
+  await updateDoc(doc(db, 'rooms', roomId, 'photos', `${role}-${safeIndex}`), {
+    caption: caption || ''
+  });
+}
+
 function bothCompletedAfterUpload(room, role, index) {
   const viktorCompleted = role === 'viktor'
     ? index >= 3

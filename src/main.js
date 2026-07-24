@@ -8,6 +8,7 @@ import {
   deleteRoomSession,
   joinRoom,
   setRoomCompleted,
+  updateCaption,
   uploadPhoto,
   watchPhotos,
   watchRoom
@@ -33,6 +34,7 @@ const state = {
   room: null,
   photos: [],
   pendingCapture: null,
+  editingCaption: null,
   facingMode: 'user',
   activeFilter: 'none',
   customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
@@ -368,6 +370,24 @@ function renderRoomShell() {
       </section>
 
       <section id="collageSection" class="card collage-card hidden"></section>
+
+      <div id="captionEditorOverlay" class="caption-editor-overlay hidden">
+        <div class="caption-editor-card">
+          <img id="captionEditorImg" alt="Photo" />
+          <label class="visually-hidden" for="captionEditorInput">Uprav popisok k fotke</label>
+          <input
+            id="captionEditorInput"
+            class="caption-input"
+            maxlength="36"
+            placeholder="napíš odkaz k tejto chvíli..."
+            autocomplete="off"
+          />
+          <div class="action-row">
+            <button class="secondary" id="captionEditorCancelBtn">Zrušiť</button>
+            <button class="primary" id="captionEditorSaveBtn">Uložiť</button>
+          </div>
+        </div>
+      </div>
     </main>
   `);
 
@@ -403,6 +423,22 @@ function renderRoomShell() {
   document.querySelector('#captionInput').addEventListener('input', (event) => {
     if (!state.pendingCapture) return;
     state.pendingCapture.caption = sanitizeCaption(event.target.value);
+  });
+
+  // Delegated: #progressPanel's innerHTML is rebuilt on every room update
+  // (real-time thumbnails), so a listener bound directly to the edit
+  // buttons would be lost each time. Binding it once on the stable parent
+  // instead survives those re-renders.
+  document.querySelector('#progressPanel').addEventListener('click', (event) => {
+    const button = event.target.closest('.thumb-edit-btn');
+    if (!button) return;
+    openCaptionEditor(button.dataset.role, Number(button.dataset.index));
+  });
+
+  document.querySelector('#captionEditorCancelBtn').addEventListener('click', closeCaptionEditor);
+  document.querySelector('#captionEditorSaveBtn').addEventListener('click', saveCaptionEditor);
+  document.querySelector('#captionEditorOverlay').addEventListener('click', (event) => {
+    if (event.target.id === 'captionEditorOverlay') closeCaptionEditor();
   });
 }
 
@@ -469,7 +505,13 @@ function buildThumbRow(role) {
   const slots = [1, 2, 3].map((index) => {
     const photo = ownerPhotos.get(index);
     if (photo?.downloadUrl) {
-      return `<div class="thumb-slot filled"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" /></div>`;
+      // Only the owner of a photo can edit its caption — matches the
+      // Firestore rules, which only allow the owning role's uid to write
+      // to that photo doc.
+      const editButton = role === state.role
+        ? `<button type="button" class="thumb-edit-btn" data-role="${role}" data-index="${index}" title="Upraviť popisok" aria-label="Upraviť popisok fotky ${index}">✎</button>`
+        : '';
+      return `<div class="thumb-slot filled"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}</div>`;
     }
     return `<div class="thumb-slot empty">${index}</div>`;
   });
@@ -596,6 +638,51 @@ async function confirmPhoto() {
   } finally {
     button.disabled = false;
     button.textContent = 'Confirm photo';
+  }
+}
+
+function openCaptionEditor(role, index) {
+  const photo = state.photos.find((item) => item.owner === role && item.index === index);
+  if (!photo) return;
+
+  state.editingCaption = { role, index };
+
+  const overlay = document.querySelector('#captionEditorOverlay');
+  const img = document.querySelector('#captionEditorImg');
+  const input = document.querySelector('#captionEditorInput');
+
+  img.src = photo.downloadUrl;
+  input.value = photo.caption || '';
+  input.style.color = role === 'viktor' ? '#2a5a86' : '#9b2948';
+  overlay.classList.remove('hidden');
+  input.focus();
+}
+
+function closeCaptionEditor() {
+  state.editingCaption = null;
+  document.querySelector('#captionEditorOverlay').classList.add('hidden');
+}
+
+async function saveCaptionEditor() {
+  if (!state.editingCaption) return;
+
+  const { role, index } = state.editingCaption;
+  const input = document.querySelector('#captionEditorInput');
+  const saveBtn = document.querySelector('#captionEditorSaveBtn');
+  const caption = sanitizeCaption(input.value);
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Ukladám...';
+
+  try {
+    await updateCaption({ roomId: state.roomId, uid: state.user.uid, role, index, caption });
+    closeCaptionEditor();
+    showToast('Popisok uložený ♡');
+  } catch (error) {
+    alert(error.message || 'Nepodarilo sa uložiť popisok.');
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Uložiť';
   }
 }
 

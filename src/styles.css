@@ -382,6 +382,7 @@ p {
 }
 
 .thumb-slot {
+  position: relative;
   aspect-ratio: 1;
   display: grid;
   place-items: center;
@@ -391,6 +392,54 @@ p {
   color: var(--muted);
   background: rgba(255, 255, 255, 0.6);
   border: 1px dashed var(--border);
+}
+
+.thumb-edit-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--rose-dark);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 4px 10px rgba(130, 52, 74, 0.28);
+  font-size: 0.72rem;
+  line-height: 1;
+  transition: transform 150ms ease;
+}
+
+.thumb-edit-btn:hover {
+  transform: scale(1.08);
+}
+
+.caption-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(79, 39, 49, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.caption-editor-card {
+  width: min(360px, 100%);
+  background: white;
+  border-radius: 26px;
+  padding: 16px 16px 20px;
+  box-shadow: 0 24px 60px rgba(88, 40, 50, 0.35);
+  text-align: center;
+}
+
+.caption-editor-card img {
+  display: block;
+  width: 100%;
+  border-radius: 16px;
+  margin-bottom: 4px;
 }
 
 .thumb-slot.filled {
