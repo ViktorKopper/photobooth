@@ -599,6 +599,20 @@ async function confirmPhoto() {
   }
 }
 
+// Feature-detects the Web Share API's ability to share files (not just
+// text/links) — support varies a lot by browser, so the Share button is
+// only rendered when it will actually work, instead of showing a button
+// that fails on desktop browsers without file-sharing support.
+function canShareFiles() {
+  if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false;
+  try {
+    const probe = new File(['probe'], 'probe.png', { type: 'image/png' });
+    return navigator.canShare({ files: [probe] });
+  } catch {
+    return false;
+  }
+}
+
 function renderCollageSection(canGenerate) {
   const section = document.querySelector('#collageSection');
   if (!section) return;
@@ -651,6 +665,7 @@ function renderCollageSection(canGenerate) {
     <div class="action-row">
       <button class="primary" id="generateCollageBtn">Generate collage</button>
       <button class="secondary" id="downloadCollageBtn" ${state.collageBlob ? '' : 'disabled'}>Download PNG</button>
+      <button class="secondary" id="shareCollageBtn" ${state.collageBlob ? '' : 'disabled'} ${canShareFiles() ? '' : 'hidden'}>Share</button>
     </div>
 
     <div class="danger-zone">
@@ -679,7 +694,41 @@ function renderCollageSection(canGenerate) {
       setRoomCompleted(state.roomId).catch(() => undefined);
     }
   });
+  document.querySelector('#shareCollageBtn')?.addEventListener('click', shareCollageFlow);
   document.querySelector('#deleteSessionBtn').addEventListener('click', deleteSessionFlow);
+}
+
+async function shareCollageFlow() {
+  if (!state.collageBlob) return;
+
+  const button = document.querySelector('#shareCollageBtn');
+  const file = new File([state.collageBlob], `viktor-jericka-photobooth-${state.roomId}.png`, { type: 'image/png' });
+
+  if (!navigator.canShare({ files: [file] })) {
+    alert('Zdieľanie súborov nie je v tomto prehliadači podporované. Skús Download PNG.');
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Sharing...';
+
+  try {
+    await navigator.share({
+      files: [file],
+      title: 'Viktor & Jericka Photobooth',
+      text: state.room?.customMessage || state.customMessage
+    });
+    setRoomCompleted(state.roomId).catch(() => undefined);
+  } catch (error) {
+    // AbortError just means the person closed the native share sheet
+    // without picking anything — not an actual failure worth surfacing.
+    if (error?.name !== 'AbortError') {
+      alert(error.message || 'Zdieľanie zlyhalo. Skús Download PNG.');
+    }
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Share';
+  }
 }
 
 async function generateCollageFlow() {
