@@ -32,6 +32,15 @@ service cloud.firestore {
         );
     }
 
+    // Which role (if any) the caller is signed in as within this room —
+    // used so a person can react to their PARTNER's photos, not just their
+    // own, without needing full photo-owner write access.
+    function callerRole(roomId) {
+      return room(roomId).participants.viktor.uid == request.auth.uid
+        ? 'viktor'
+        : (room(roomId).participants.jericka.uid == request.auth.uid ? 'jericka' : null);
+    }
+
     function participantKeysAreValid(data) {
       return data.keys().hasOnly(['uid', 'joined', 'photoCount', 'completed', 'lastActiveAt']);
     }
@@ -123,7 +132,8 @@ service cloud.firestore {
             'createdAt',
             'width',
             'height',
-            'caption'
+            'caption',
+            'reactions'
           ])
           && validRole(data.owner)
           && data.ownerUid == request.auth.uid
@@ -134,13 +144,44 @@ service cloud.firestore {
           && data.storagePath.matches('photobooth/' + roomId + '/' + data.owner + '/photo-[1-3]\\.jpg')
           && data.downloadUrl is string
           && data.caption is string
-          && data.caption.size() <= 36;
+          && data.caption.size() <= 36
+          // `reactions` is optional in the schema (older photos were
+          // created before this field existed) but must be well-formed
+          // when it IS present.
+          && (!('reactions' in data) || (
+            data.reactions is map
+            && data.reactions.keys().hasOnly(['viktor', 'jericka'])
+            && (!('viktor' in data.reactions) || data.reactions.viktor is bool)
+            && (!('jericka' in data.reactions) || data.reactions.jericka is bool)
+          ));
+        }
+
+        // A participant may react to ANY photo in the room (their own or
+        // their partner's) without being its owner — as long as the only
+        // thing changing is the `reactions` map, and only their own key
+        // within it.
+        function isReactionOnlyUpdate(role) {
+          let before = resource.data;
+          let after = request.resource.data;
+          let beforeReactions = ('reactions' in before) ? before.reactions : {};
+          let afterReactions = after.reactions;
+          return validRole(role)
+            && before.diff(after).affectedKeys().hasOnly(['reactions'])
+            && afterReactions is map
+            && afterReactions.keys().hasOnly(['viktor', 'jericka'])
+            && (!('viktor' in afterReactions) || afterReactions.viktor is bool)
+            && (!('jericka' in afterReactions) || afterReactions.jericka is bool)
+            && (role == 'viktor'
+                ? afterReactions.get('jericka', false) == beforeReactions.get('jericka', false)
+                : afterReactions.get('viktor', false) == beforeReactions.get('viktor', false));
         }
 
         allow get, list: if isParticipant(roomId);
         allow create, update: if isParticipant(roomId)
-          && validPhoto(request.resource.data)
-          && ownsRole(roomId, request.resource.data.owner);
+          && (
+            (validPhoto(request.resource.data) && ownsRole(roomId, request.resource.data.owner))
+            || isReactionOnlyUpdate(callerRole(roomId))
+          );
         allow delete: if isParticipant(roomId);
       }
     }

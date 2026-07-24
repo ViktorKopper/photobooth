@@ -7,6 +7,7 @@ import {
   createRoom,
   deleteRoomSession,
   joinRoom,
+  setReaction,
   setRoomCompleted,
   updateCaption,
   uploadPhoto,
@@ -442,9 +443,16 @@ function renderRoomShell() {
   // buttons would be lost each time. Binding it once on the stable parent
   // instead survives those re-renders.
   document.querySelector('#progressPanel').addEventListener('click', (event) => {
-    const button = event.target.closest('.thumb-edit-btn');
-    if (!button) return;
-    openCaptionEditor(button.dataset.role, Number(button.dataset.index));
+    const editButton = event.target.closest('.thumb-edit-btn');
+    if (editButton) {
+      openCaptionEditor(editButton.dataset.role, Number(editButton.dataset.index));
+      return;
+    }
+
+    const reactionButton = event.target.closest('.thumb-reaction-btn');
+    if (reactionButton) {
+      toggleReactionFlow(reactionButton.dataset.role, Number(reactionButton.dataset.index));
+    }
   });
 
   document.querySelector('#captionEditorCancelBtn').addEventListener('click', closeCaptionEditor);
@@ -523,7 +531,26 @@ function buildThumbRow(role) {
       const editButton = role === state.role
         ? `<button type="button" class="thumb-edit-btn" data-role="${role}" data-index="${index}" title="Upraviť popisok" aria-label="Upraviť popisok fotky ${index}">✎</button>`
         : '';
-      return `<div class="thumb-slot filled"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}</div>`;
+
+      // Anyone can react to any photo — reacting is the viewer's own
+      // expression, not something the photo owner controls.
+      const partnerRole = otherRole(state.role);
+      const partnerReacted = Boolean(photo.reactions?.[partnerRole]);
+      const myReacted = Boolean(photo.reactions?.[state.role]);
+
+      const partnerBadge = partnerReacted
+        ? `<span class="thumb-partner-heart" title="${escapeAttr(ROLES[partnerRole].name)} sa páči táto fotka">♥</span>`
+        : '';
+      const reactionButton = `<button
+        type="button"
+        class="thumb-reaction-btn${myReacted ? ' reacted' : ''}"
+        data-role="${role}"
+        data-index="${index}"
+        title="${myReacted ? 'Zrušiť reakciu' : 'Páči sa mi táto fotka'}"
+        aria-label="${myReacted ? 'Zrušiť reakciu na fotku' : 'Označiť fotku srdiečkom'} ${index}"
+      >${myReacted ? '♥' : '♡'}</button>`;
+
+      return `<div class="thumb-slot filled"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}${partnerBadge}${reactionButton}</div>`;
     }
     return `<div class="thumb-slot empty">${index}</div>`;
   });
@@ -695,6 +722,31 @@ async function saveCaptionEditor() {
   } finally {
     saveBtn.disabled = false;
     saveBtn.textContent = 'Uložiť';
+  }
+}
+
+// Reacting is quick and low-stakes on purpose — no loading state, no
+// disabling the button, just an optimistic-feeling toggle. The Firestore
+// realtime subscription re-renders the actual state moments later anyway;
+// if the write ever fails, it silently reverts on the next snapshot rather
+// than interrupting anyone with an alert over a heart tap.
+async function toggleReactionFlow(ownerRole, index) {
+  const photo = state.photos.find((item) => item.owner === ownerRole && item.index === index);
+  if (!photo) return;
+
+  const nextValue = !photo.reactions?.[state.role];
+
+  try {
+    await setReaction({
+      roomId: state.roomId,
+      uid: state.user.uid,
+      myRole: state.role,
+      ownerRole,
+      index,
+      value: nextValue
+    });
+  } catch (error) {
+    console.error('Reaction failed', error);
   }
 }
 

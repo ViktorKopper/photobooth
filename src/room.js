@@ -167,7 +167,8 @@ export async function uploadPhoto({ roomId, uid, role, index, blob, caption = ''
     createdAt: serverTimestamp(),
     width: null,
     height: null,
-    caption: caption || ''
+    caption: caption || '',
+    reactions: { viktor: false, jericka: false }
   });
 
   await updateDoc(roomRef, {
@@ -201,6 +202,32 @@ export async function updateCaption({ roomId, uid, role, index, caption }) {
   // needed for the size/ownership checks.
   await updateDoc(doc(db, 'rooms', roomId, 'photos', `${role}-${safeIndex}`), {
     caption: caption || ''
+  });
+}
+
+// Lets a participant react (or un-react) to ANY photo in the room — theirs
+// or their partner's — the moment it's uploaded, without waiting for the
+// final collage. `myRole` is whoever is reacting; `ownerRole`/`index`
+// identify which photo. Firestore rules restrict this to only ever
+// touching the caller's own key inside the `reactions` map.
+export async function setReaction({ roomId, uid, myRole, ownerRole, index, value }) {
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnapshot = await getDoc(roomRef);
+
+  if (!roomSnapshot.exists()) {
+    throw new Error('Room no longer exists.');
+  }
+
+  const participant = roomSnapshot.data().participants?.[myRole];
+
+  if (participant?.uid !== uid) {
+    throw new Error('This browser is not connected as this person in the room.');
+  }
+
+  const safeIndex = Math.max(1, Math.min(index, 3));
+
+  await updateDoc(doc(db, 'rooms', roomId, 'photos', `${ownerRole}-${safeIndex}`), {
+    [`reactions.${myRole}`]: Boolean(value)
   });
 }
 

@@ -415,6 +415,48 @@ p {
   transform: scale(1.08);
 }
 
+.thumb-reaction-btn {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--rose-dark);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 4px 10px rgba(130, 52, 74, 0.28);
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: transform 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.thumb-reaction-btn:hover {
+  transform: scale(1.12);
+}
+
+.thumb-reaction-btn.reacted {
+  color: white;
+  background: linear-gradient(135deg, #e85d85, #b82449);
+}
+
+.thumb-partner-heart {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  color: white;
+  background: rgba(199, 52, 90, 0.88);
+  font-size: 0.68rem;
+  box-shadow: 0 4px 10px rgba(130, 52, 74, 0.28);
+  animation: popIn 320ms ease both;
+}
+
 .caption-editor-overlay {
   position: fixed;
   inset: 0;
