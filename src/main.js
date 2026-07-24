@@ -1,9 +1,9 @@
 import './styles.css';
 import { ensureAnonymousAuth } from './firebase.js';
 import { capturePhoto, startCamera, stopCamera } from './camera.js';
-import { COLLAGE_THEMES, generateCollage } from './collage.js';
+import { COLLAGE_THEMES, EXPORT_PRESETS, generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
-import { describeLocation, describeSearchResult, searchCities } from './geo.js';
+import { describeLocation, describeSearchResult, fetchWeather, searchCities } from './geo.js';
 import {
   expiredRoomIds,
   forgetAllRooms,
@@ -27,6 +27,7 @@ import {
   watchRoom
 } from './room.js';
 import {
+  dayDeltaBetween,
   daysTogether,
   distanceBetween,
   downloadBlob,
@@ -66,6 +67,7 @@ const state = {
   photos: [],
   pendingCapture: null,
   editingCaption: null,
+  replacingIndex: null,
   facingMode: 'user',
   activeFilter: 'none',
   customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
@@ -77,12 +79,15 @@ const state = {
   collageLayout: 'grid',
   collageScale: '1',
   collageTheme: 'rose',
+  collageExport: 'original',
   unsubscribeRoom: null,
   unsubscribePhotos: null,
   cameraStarted: false,
   syncScheduledFor: null,
   syncTimers: [],
-  clockTimer: null
+  clockTimer: null,
+  weather: { viktor: null, jericka: null },
+  weatherTimer: null
 };
 
 function readStoredLocation() {
@@ -215,6 +220,25 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => {
     toast.classList.remove('toast-visible');
   }, 1800);
+}
+
+// The physical half of the shutter: a brief white flash over the preview
+// and a short haptic tap. Both are pure garnish — wrapped so an
+// unsupported or blocked API can never interrupt a capture.
+function triggerShutterFeedback() {
+  const flash = document.querySelector('#shutterFlash');
+  if (flash) {
+    flash.classList.remove('flashing');
+    // Force reflow so retriggering restarts the animation on rapid shots.
+    void flash.offsetWidth;
+    flash.classList.add('flashing');
+  }
+
+  try {
+    navigator.vibrate?.([30, 40, 20]);
+  } catch {
+    // Haptics are unavailable on desktop and blocked in some contexts.
+  }
 }
 
 let audioContext = null;
@@ -593,6 +617,7 @@ async function enterRoom() {
   );
 
   startClockTicker();
+  startWeatherTicker();
   syncMyLocationToRoom();
 
   await startCurrentCamera();
@@ -635,6 +660,7 @@ function renderRoomShell() {
           <div class="camera-wrap">
             <video id="cameraPreview" class="camera-preview" autoplay muted playsinline></video>
             <div id="countdown" class="countdown hidden" aria-live="polite"></div>
+            <div id="shutterFlash" class="shutter-flash" aria-hidden="true"></div>
             <div id="cameraError" class="camera-error hidden"></div>
           </div>
 
@@ -663,6 +689,7 @@ function renderRoomShell() {
             <button class="primary" id="takePhotoBtn">Take photo</button>
             <button class="secondary" id="syncBtn">📸 Shoot together</button>
             <button class="secondary" id="switchCameraBtn">Switch camera</button>
+            <button class="ghost hidden" id="cancelReplaceBtn">Cancel retake</button>
           </div>
           <p id="syncStatus" class="sync-status hidden"></p>
         </section>
@@ -719,6 +746,7 @@ function renderRoomShell() {
   document.querySelector('#retakeBtn').addEventListener('click', retakePhoto);
   document.querySelector('#confirmBtn').addEventListener('click', confirmPhoto);
   document.querySelector('#syncBtn').addEventListener('click', requestSyncFlow);
+  document.querySelector('#cancelReplaceBtn').addEventListener('click', cancelReplacingPhoto);
   document.querySelector('#notifyToggleBtn').addEventListener('click', requestNotificationPermissionFlow);
   updateNotifyToggleButton();
 
@@ -735,6 +763,12 @@ function renderRoomShell() {
     const editButton = event.target.closest('.thumb-edit-btn');
     if (editButton) {
       openCaptionEditor(editButton.dataset.role, Number(editButton.dataset.index));
+      return;
+    }
+
+    const retakeButton = event.target.closest('.thumb-retake-btn');
+    if (retakeButton) {
+      startReplacingPhoto(Number(retakeButton.dataset.index));
       return;
     }
 
@@ -821,6 +855,10 @@ function buildThumbRow(role) {
         ? `<button type="button" class="thumb-edit-btn" data-role="${role}" data-index="${index}" title="Edit caption" aria-label="Edit caption for photo ${index}">✎</button>`
         : '';
 
+      const retakeButton = role === state.role
+        ? `<button type="button" class="thumb-retake-btn" data-index="${index}" title="Retake this photo" aria-label="Retake photo ${index}">⟳</button>`
+        : '';
+
       // Anyone can react to any photo — reacting is the viewer's own
       // expression, not something the photo owner controls.
       const partnerRole = otherRole(state.role);
@@ -839,7 +877,9 @@ function buildThumbRow(role) {
         aria-label="${myReacted ? 'Remove reaction from photo' : 'Like photo'} ${index}"
       >${myReacted ? '♥' : '♡'}</button>`;
 
-      return `<div class="thumb-slot filled"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}${partnerBadge}${reactionButton}</div>`;
+      const replacing = role === state.role && state.replacingIndex === index;
+
+      return `<div class="thumb-slot filled${replacing ? ' replacing' : ''}"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}${retakeButton}${partnerBadge}${reactionButton}</div>`;
     }
     return `<div class="thumb-slot empty">${index}</div>`;
   });
@@ -878,6 +918,7 @@ function renderDistancePanel() {
       <div class="distance-single">
         <span class="distance-city">📍 ${escapeHtml(describeLocation(known))}</span>
         ${clock ? `<span class="distance-clock">${clock.isNight ? '🌙' : '☀️'} ${escapeHtml(clock.label)}</span>` : ''}
+        ${weatherChip(knownRole)}
       </div>
       <p class="distance-hint">${escapeHtml(
         knownRole === myRole
@@ -892,15 +933,25 @@ function renderDistancePanel() {
   const myClock = timeInZone(mine.timezone);
   const theirClock = timeInZone(theirs.timezone);
   const offset = hourOffsetBetween(mine.timezone, theirs.timezone);
+  const dayDelta = dayDeltaBetween(myClock, theirClock);
 
   const offsetLabel = offset === 0
-    ? 'same time zone'
+    ? 'in the same time zone'
     : `${Math.abs(offset)}h ${offset > 0 ? 'ahead' : 'behind'}`;
+
+  // The detail that makes long distance feel real: not just a different
+  // hour, but a different day altogether.
+  const dayNote = dayDelta === 1
+    ? ` — already ${theirClock.weekday} there`
+    : dayDelta === -1
+      ? ` — still ${theirClock.weekday} there`
+      : '';
 
   const dot = (role, clock) => `
     <div class="distance-side">
       <span class="distance-dot distance-dot-${role}">${clock?.isNight ? '🌙' : '☀️'}</span>
       <strong class="distance-time">${clock ? escapeHtml(clock.label) : '--:--'}</strong>
+      ${weatherChip(role)}
       <span class="distance-city">${escapeHtml(describeLocation(role === myRole ? mine : theirs))}</span>
       <span class="distance-who">${escapeHtml(ROLES[role].name)}</span>
     </div>
@@ -920,8 +971,45 @@ function renderDistancePanel() {
       </div>
       ${dot(theirRole, theirClock)}
     </div>
-    <p class="distance-hint">${escapeHtml(`${ROLES[theirRole].name} is ${offsetLabel}`)}</p>
+    <p class="distance-hint">${escapeHtml(`${ROLES[theirRole].name} is ${offsetLabel}${dayNote}`)}</p>
   `;
+}
+
+function weatherChip(role) {
+  const weather = state.weather[role];
+  if (!weather) return '';
+  return `<span class="distance-weather" title="${escapeAttr(weather.label)}">${weather.icon} ${escapeHtml(String(weather.temperature))}°</span>`;
+}
+
+// Weather is fetched per room entry and then only occasionally — conditions
+// move far slower than the clock, and this is a third-party API we don't
+// want to lean on. A failed lookup just leaves the chip out.
+async function refreshWeather() {
+  const roles = ['viktor', 'jericka'];
+
+  await Promise.all(
+    roles.map(async (role) => {
+      const location = state.room?.participants?.[role]?.location;
+      if (!isUsableLocation(location)) {
+        state.weather[role] = null;
+        return;
+      }
+      state.weather[role] = await fetchWeather(location);
+    })
+  );
+
+  renderDistancePanel();
+}
+
+function startWeatherTicker() {
+  stopWeatherTicker();
+  refreshWeather();
+  state.weatherTimer = window.setInterval(refreshWeather, 15 * 60 * 1000);
+}
+
+function stopWeatherTicker() {
+  if (state.weatherTimer) window.clearInterval(state.weatherTimer);
+  state.weatherTimer = null;
 }
 
 // Local times drift while the room stays open, so nudge the panel every
@@ -974,7 +1062,9 @@ function updateRoomView() {
   const bothComplete = viktorCount >= 3 && jerickaCount >= 3;
 
   if (roomMessage) {
-    if (bothComplete) {
+    if (state.replacingIndex) {
+      roomMessage.textContent = `Retaking photo ${state.replacingIndex}. Take a new one, or cancel below.`;
+    } else if (bothComplete) {
       roomMessage.textContent = 'Both of you are done. You can generate your collage now.';
     } else if (myCount >= 3) {
       roomMessage.textContent = `Your photos are done. Waiting for ${ROLES[state.role].waitingFor} to finish.`;
@@ -987,8 +1077,18 @@ function updateRoomView() {
 
   const takeButton = document.querySelector('#takePhotoBtn');
   if (takeButton) {
-    takeButton.disabled = myCount >= 3 || Boolean(state.pendingCapture) || !state.cameraStarted;
-    takeButton.textContent = myCount >= 3 ? 'Your 3 photos are done' : `Take photo ${myCount + 1}/3`;
+    const replacing = Boolean(state.replacingIndex);
+    takeButton.disabled = (!replacing && myCount >= 3) || Boolean(state.pendingCapture) || !state.cameraStarted;
+    takeButton.textContent = replacing
+      ? `Retake photo ${state.replacingIndex}`
+      : myCount >= 3
+        ? 'Your 3 photos are done'
+        : `Take photo ${myCount + 1}/3`;
+  }
+
+  const cancelReplaceBtn = document.querySelector('#cancelReplaceBtn');
+  if (cancelReplaceBtn) {
+    cancelReplaceBtn.classList.toggle('hidden', !state.replacingIndex);
   }
 
   const syncButton = document.querySelector('#syncBtn');
@@ -1035,6 +1135,7 @@ async function finishCaptureAfterCountdown() {
     countdown.classList.remove('pulse');
   }
   playShutterSound();
+  triggerShutterFeedback();
   await sleep(260);
   if (countdown) {
     countdown.classList.add('hidden');
@@ -1042,21 +1143,30 @@ async function finishCaptureAfterCountdown() {
   }
 
   const myCount = state.room?.participants?.[state.role]?.photoCount || 0;
+  const replacingIndex = state.replacingIndex;
 
   // On a synced countdown, one side may have nothing to do — already at
   // 3/3, camera not ready, or already mid-capture. The shared moment simply
-  // doesn't apply to them; only re-enable the controls and stop.
-  if (!video || !state.cameraStarted || myCount >= 3 || state.pendingCapture) {
+  // doesn't apply to them; only re-enable the controls and stop. Someone
+  // mid-retake is exempt from the 3/3 check: that's the whole point.
+  if (!video || !state.cameraStarted || state.pendingCapture || (!replacingIndex && myCount >= 3)) {
     cameraActions?.classList.remove('disabled');
     return;
   }
 
   try {
     state.pendingCapture = await capturePhoto(video, state.facingMode, findFilter(state.activeFilter).ops);
-    state.pendingCapture.caption = '';
+
+    // Carry the existing caption over when redoing a slot, so a retake
+    // doesn't silently throw away words the person still means.
+    const existing = replacingIndex
+      ? state.photos.find((item) => item.owner === state.role && item.index === replacingIndex)?.caption || ''
+      : '';
+
+    state.pendingCapture.caption = existing;
     document.querySelector('#photoPreview').src = state.pendingCapture.previewUrl;
     const captionInput = document.querySelector('#captionInput');
-    captionInput.value = '';
+    captionInput.value = existing;
     document.querySelector('#previewPanel').classList.remove('hidden');
     document.querySelector('#cameraActions').classList.add('hidden');
     captionInput.focus();
@@ -1065,6 +1175,19 @@ async function finishCaptureAfterCountdown() {
   } finally {
     cameraActions?.classList.remove('disabled');
   }
+}
+
+function startReplacingPhoto(index) {
+  state.replacingIndex = index;
+  retakePhoto();
+  updateRoomView();
+  document.querySelector('#cameraPreview')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelReplacingPhoto() {
+  state.replacingIndex = null;
+  retakePhoto();
+  updateRoomView();
 }
 
 async function requestSyncFlow() {
@@ -1233,6 +1356,7 @@ async function confirmPhoto() {
 
   const button = document.querySelector('#confirmBtn');
   const myCount = state.room?.participants?.[state.role]?.photoCount || 0;
+  const replacingIndex = state.replacingIndex;
   button.disabled = true;
   button.textContent = 'Uploading...';
 
@@ -1241,12 +1365,15 @@ async function confirmPhoto() {
       roomId: state.roomId,
       uid: state.user.uid,
       role: state.role,
-      index: myCount + 1,
+      index: replacingIndex || myCount + 1,
       blob: state.pendingCapture.blob,
-      caption: sanitizeCaption(state.pendingCapture.caption)
+      caption: sanitizeCaption(state.pendingCapture.caption),
+      replace: Boolean(replacingIndex)
     });
+    state.replacingIndex = null;
     retakePhoto();
-    showToast('Saved ♡');
+    updateRoomView();
+    showToast(replacingIndex ? `Photo ${replacingIndex} replaced ♡` : 'Saved ♡');
   } catch (error) {
     alert(error.message || 'Upload failed.');
   } finally {
@@ -1387,6 +1514,7 @@ function renderCollageSection(canGenerate) {
           { value: '2', label: 'Print (2×)' }
         ])}
         ${buildSegmented('Theme', 'collageTheme', COLLAGE_THEMES.map((theme) => ({ value: theme.id, label: theme.label })))}
+        ${buildSegmented('Format', 'collageExport', EXPORT_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })))}
       </div>
     </div>
     ${preview}
@@ -1483,7 +1611,8 @@ async function generateCollageFlow() {
         viktor: state.room?.participants?.viktor?.location || null,
         jericka: state.room?.participants?.jericka?.location || null
       },
-      theme: state.collageTheme
+      theme: state.collageTheme,
+      exportPreset: state.collageExport
     });
 
     state.collageBlob = result.blob;
@@ -1557,6 +1686,7 @@ function stopSubscriptions() {
   state.unsubscribePhotos = null;
   clearSyncTimers();
   stopClockTicker();
+  stopWeatherTicker();
   state.syncScheduledFor = null;
 }
 

@@ -150,7 +150,7 @@ export function watchPhotos(roomId, onChange, onError) {
   );
 }
 
-export async function uploadPhoto({ roomId, uid, role, index, blob, caption = '' }) {
+export async function uploadPhoto({ roomId, uid, role, index, blob, caption = '', replace = false }) {
   const roomRef = doc(db, 'rooms', roomId);
   const roomSnapshot = await getDoc(roomRef);
 
@@ -165,7 +165,9 @@ export async function uploadPhoto({ roomId, uid, role, index, blob, caption = ''
     throw new Error('This browser is not connected as this person in the room.');
   }
 
-  if (participant?.photoCount >= 3) {
+  // A replacement targets an existing slot, so the "you're full" guard
+  // doesn't apply — being at 3/3 is exactly when you'd want to redo one.
+  if (!replace && participant?.photoCount >= 3) {
     throw new Error('You already have 3 confirmed photos.');
   }
 
@@ -194,8 +196,20 @@ export async function uploadPhoto({ roomId, uid, role, index, blob, caption = ''
     width: null,
     height: null,
     caption: caption || '',
+    // A replaced photo is a different photo — any hearts the old one
+    // collected shouldn't silently carry over to it.
     reactions: { viktor: false, jericka: false }
   });
+
+  // Replacing must not touch photoCount: redoing photo 1 while sitting at
+  // 3/3 would otherwise knock the counter back down to 1.
+  if (replace) {
+    await updateDoc(roomRef, {
+      [`participants.${role}.lastActiveAt`]: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return;
+  }
 
   await updateDoc(roomRef, {
     [`participants.${role}.photoCount`]: safeIndex,

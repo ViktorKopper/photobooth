@@ -283,6 +283,13 @@ p {
   font-weight: 800;
 }
 
+.distance-weather {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .distance-hint {
   margin: 10px 0 0;
   text-align: center;
@@ -552,6 +559,31 @@ p {
   transform: scale(1.08);
 }
 
+.thumb-retake-btn {
+  position: absolute;
+  top: 4px;
+  right: 30px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--rose-dark);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 4px 10px rgba(130, 52, 74, 0.28);
+  font-size: 0.78rem;
+  line-height: 1;
+  transition: transform 150ms ease;
+}
+
+.thumb-retake-btn:hover {
+  transform: scale(1.08);
+}
+
+.thumb-slot.replacing {
+  box-shadow: 0 0 0 3px var(--rose) !important;
+}
+
 .thumb-reaction-btn {
   position: absolute;
   bottom: 4px;
@@ -739,6 +771,30 @@ p {
 .filter-swatch.active {
   border-color: var(--rose);
   box-shadow: 0 0 0 3px rgba(217, 77, 114, 0.18);
+}
+
+.shutter-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: white;
+  opacity: 0;
+}
+
+.shutter-flash.flashing {
+  animation: shutterFlash 260ms ease-out;
+}
+
+@keyframes shutterFlash {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 .preview-panel {

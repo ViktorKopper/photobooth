@@ -34,6 +34,70 @@ export async function searchCities(query, { count = 5, signal } = {}) {
     }));
 }
 
+const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+
+// WMO weather interpretation codes, collapsed into the handful of states
+// worth showing at a glance. Ranges rather than every individual code —
+// "light drizzle" vs "moderate drizzle" is more precision than a status
+// line needs.
+const WEATHER_CODES = [
+  { max: 0, icon: '☀️', label: 'clear' },
+  { max: 2, icon: '🌤️', label: 'partly cloudy' },
+  { max: 3, icon: '☁️', label: 'overcast' },
+  { max: 48, icon: '🌫️', label: 'fog' },
+  { max: 57, icon: '🌦️', label: 'drizzle' },
+  { max: 67, icon: '🌧️', label: 'rain' },
+  { max: 77, icon: '❄️', label: 'snow' },
+  { max: 82, icon: '🌧️', label: 'showers' },
+  { max: 86, icon: '🌨️', label: 'snow showers' },
+  { max: 99, icon: '⛈️', label: 'thunderstorm' }
+];
+
+function describeWeatherCode(code) {
+  // Guard the low end too: a missing or negative code must not slide into
+  // the first bucket and cheerfully report clear skies.
+  if (!Number.isFinite(code) || code < 0) return { icon: '🌡️', label: '' };
+  const match = WEATHER_CODES.find((entry) => code <= entry.max);
+  return match || { icon: '🌡️', label: '' };
+}
+
+// Current conditions for a stored location. Written defensively on purpose:
+// this is a third-party API the app doesn't control, so anything unexpected
+// resolves to null and the caller simply renders no weather rather than
+// breaking the panel around it.
+export async function fetchWeather(location, { signal } = {}) {
+  if (!location || !Number.isFinite(location.latitude) || !Number.isFinite(location.longitude)) {
+    return null;
+  }
+
+  const url = new URL(FORECAST_URL);
+  url.searchParams.set('latitude', String(location.latitude));
+  url.searchParams.set('longitude', String(location.longitude));
+  url.searchParams.set('current', 'temperature_2m,weather_code');
+  url.searchParams.set('timezone', 'auto');
+
+  try {
+    const response = await fetch(url, { signal });
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const temperature = data?.current?.temperature_2m;
+    const code = data?.current?.weather_code;
+
+    if (!Number.isFinite(temperature)) return null;
+
+    const described = describeWeatherCode(code);
+
+    return {
+      temperature: Math.round(temperature),
+      icon: described.icon,
+      label: described.label
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function describeLocation(location) {
   if (!location) return '';
   return [location.name, location.country].filter(Boolean).join(', ');

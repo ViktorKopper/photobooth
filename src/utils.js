@@ -142,6 +142,9 @@ export function timeInZone(timezone, reference = new Date()) {
       hour: '2-digit',
       minute: '2-digit',
       weekday: 'short',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
       hour12: false
     }).formatToParts(reference);
 
@@ -152,6 +155,9 @@ export function timeInZone(timezone, reference = new Date()) {
       hour,
       label: `${lookup('hour')}:${lookup('minute')}`,
       weekday: lookup('weekday'),
+      // Sortable calendar day in this zone, so two zones can be compared
+      // directly rather than by guessing from the hour offset.
+      dateKey: `${lookup('year')}-${lookup('month')}-${lookup('day')}`,
       // Rough but universally understood split: anything from 20:00 to
       // 05:59 reads as night for the sun/moon indicator.
       isNight: hour >= 20 || hour < 6
@@ -159,6 +165,14 @@ export function timeInZone(timezone, reference = new Date()) {
   } catch {
     return null;
   }
+}
+
+// Whether zone B's calendar day is ahead of, behind, or the same as A's.
+// Returns 1, -1 or 0 (null if either clock is unreadable).
+export function dayDeltaBetween(clockA, clockB) {
+  if (!clockA?.dateKey || !clockB?.dateKey) return null;
+  if (clockA.dateKey === clockB.dateKey) return 0;
+  return clockB.dateKey > clockA.dateKey ? 1 : -1;
 }
 
 // Difference in whole hours between two timezones, right now. Signed from

@@ -122,6 +122,55 @@ export function findTheme(id) {
   return COLLAGE_THEMES.find((theme) => theme.id === id) || COLLAGE_THEMES[0];
 }
 
+// Output shapes. `aspect` is width / height; null means "leave the collage
+// at whatever proportions its layout produced".
+export const EXPORT_PRESETS = [
+  { id: 'original', label: 'Original', aspect: null },
+  { id: 'story', label: 'Story 9:16', aspect: 9 / 16 },
+  { id: 'square', label: 'Square', aspect: 1 }
+];
+
+export function findExportPreset(id) {
+  return EXPORT_PRESETS.find((preset) => preset.id === id) || EXPORT_PRESETS[0];
+}
+
+// Re-centres a finished collage inside a canvas of a different shape,
+// filling the surrounding space with the same themed background so the
+// result looks composed for that format rather than letterboxed onto it.
+// Resolution is preserved by growing the canvas rather than shrinking the
+// artwork: the collage is never scaled up beyond 1:1.
+function fitOntoAspect(source, aspect) {
+  if (!aspect) return source;
+
+  const sourceAspect = source.width / source.height;
+  const margin = 0.94;
+
+  let targetWidth;
+  let targetHeight;
+
+  if (sourceAspect > aspect) {
+    // Source is relatively wider — its width drives the target size.
+    targetWidth = Math.round(source.width / margin);
+    targetHeight = Math.round(targetWidth / aspect);
+  } else {
+    targetHeight = Math.round(source.height / margin);
+    targetWidth = Math.round(targetHeight * aspect);
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+
+  const ctx = canvas.getContext('2d');
+  drawPageBackground(ctx, targetWidth, targetHeight);
+
+  const x = Math.round((targetWidth - source.width) / 2);
+  const y = Math.round((targetHeight - source.height) / 2);
+  ctx.drawImage(source, x, y);
+
+  return canvas;
+}
+
 // The active palette. Swapped once per generateCollage() call, immediately
 // before the synchronous drawing pass, so every draw helper below can read
 // it without threading a palette argument through a dozen signatures.
@@ -973,7 +1022,8 @@ export async function generateCollage({
   scale = 1,
   anniversaryDate = '',
   locations = null,
-  theme = 'rose'
+  theme = 'rose',
+  exportPreset = 'original'
 }) {
   const { viktor, jericka } = splitPhotosByOwner(photos);
   const { viktorItems, jerickaItems } = await loadOwnerImages(viktor, jericka);
@@ -1015,8 +1065,10 @@ export async function generateCollage({
   drawFn(ctx, dims, payload);
   applyFilmGrain(ctx, dims.width, dims.height);
 
+  const exported = fitOntoAspect(canvas, findExportPreset(exportPreset).aspect);
+
   const blob = await new Promise((resolve, reject) => {
-    canvas.toBlob(
+    exported.toBlob(
       (result) => {
         if (result) {
           resolve(result);
