@@ -14,6 +14,13 @@ old. That prefix is where `uploadPhoto()` writes
 (`photobooth/{roomId}/{role}/photo-N.jpg`), so nothing else in the bucket is
 touched.
 
+**Saved collages are deliberately outside that prefix.** `publishCollage()`
+writes to `keepsakes/{roomId}.png`, which this rule never matches — the
+individual photos are working material and get swept, but the finished
+collage is the keepsake the app exists to make, and it is kept. If you ever
+add a lifecycle rule for `keepsakes/` too, that is the switch that decides
+whether your collages expire.
+
 ## Option A — command line (fastest)
 
 Requires the [gcloud CLI](https://cloud.google.com/sdk/docs/install), signed

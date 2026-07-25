@@ -229,6 +229,55 @@ export async function uploadPhoto({ roomId, uid, role, index, blob, caption = ''
   });
 }
 
+// Swaps two of your own photos between slots.
+//
+// Nothing is re-uploaded: the two documents exchange their file references
+// and captions while keeping their own `index`. The Storage rules only
+// require a path to match `photo-[1-3].jpg` for the right room and owner —
+// they don't tie a file to the slot it started in — so a photo shot into
+// slot 3 is perfectly valid sitting in slot 1.
+export async function swapPhotos({ roomId, uid, role, indexA, indexB }) {
+  if (indexA === indexB) return;
+
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnapshot = await getDoc(roomRef);
+
+  if (!roomSnapshot.exists()) {
+    throw new Error('Room no longer exists.');
+  }
+
+  if (roomSnapshot.data().participants?.[role]?.uid !== uid) {
+    throw new Error('This browser is not connected as this person in the room.');
+  }
+
+  const refA = doc(db, 'rooms', roomId, 'photos', `${role}-${indexA}`);
+  const refB = doc(db, 'rooms', roomId, 'photos', `${role}-${indexB}`);
+
+  const [snapA, snapB] = await Promise.all([getDoc(refA), getDoc(refB)]);
+
+  if (!snapA.exists() || !snapB.exists()) {
+    throw new Error('Both photos need to exist before they can be swapped.');
+  }
+
+  const a = snapA.data();
+  const b = snapB.data();
+
+  const moved = (from) => ({
+    storagePath: from.storagePath,
+    downloadUrl: from.downloadUrl,
+    caption: from.caption || '',
+    // Reactions belong to the photo, not the position it sits in.
+    reactions: from.reactions || { viktor: false, jericka: false }
+  });
+
+  await Promise.all([updateDoc(refA, moved(b)), updateDoc(refB, moved(a))]);
+
+  await updateDoc(roomRef, {
+    [`participants.${role}.lastActiveAt`]: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+}
+
 export async function updateCaption({ roomId, uid, role, index, caption }) {
   const roomRef = doc(db, 'rooms', roomId);
   const roomSnapshot = await getDoc(roomRef);
@@ -313,6 +362,24 @@ export async function requestSyncCountdown({ roomId, uid, role, seconds = 3 }) {
   });
 }
 
+// Stamps "I'm shooting right now" onto your own participant record so the
+// other side can see it live. Deliberately fire-and-forget with no clearing
+// step: the reader treats anything older than a few seconds as finished,
+// which means a browser that closes mid-countdown can't leave the other
+// person staring at a stuck indicator.
+export async function markShooting({ roomId, uid, role }) {
+  const roomRef = doc(db, 'rooms', roomId);
+  const roomSnapshot = await getDoc(roomRef);
+
+  if (!roomSnapshot.exists()) return;
+  if (roomSnapshot.data().participants?.[role]?.uid !== uid) return;
+
+  await updateDoc(roomRef, {
+    [`participants.${role}.shootingAt`]: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+}
+
 export async function clearSyncCountdown(roomId) {
   await updateDoc(doc(db, 'rooms', roomId), {
     syncCountdown: null,
@@ -347,7 +414,11 @@ export async function publishCollage({ roomId, uid, role, blob, meta = {} }) {
     throw new Error('This browser is not connected as this person in the room.');
   }
 
-  const storagePath = `photobooth/${roomId}/collage.png`;
+  // Deliberately outside the `photobooth/` prefix. Everything under that
+  // prefix is swept by the Storage lifecycle rule after two days along with
+  // the booth it belongs to — but a finished collage is the keepsake the
+  // whole app exists to produce, and it should outlive the room.
+  const storagePath = `keepsakes/${roomId}.png`;
   const storageRef = ref(storage, storagePath);
 
   await uploadBytes(storageRef, blob, {
@@ -394,9 +465,9 @@ export async function deleteRoomSession(roomId) {
     })
   );
 
-  // The published collage lives outside the photos subcollection, so it
-  // needs removing explicitly or it would outlive the booth in Storage.
-  await deleteObject(ref(storage, `photobooth/${roomId}/collage.png`)).catch(() => undefined);
-
+  // The saved collage is deliberately left behind. It lives under
+  // `keepsakes/` precisely so that clearing out a finished booth — whether
+  // by hand or by the two-day sweep — doesn't destroy the one thing worth
+  // keeping from it.
   await deleteDoc(doc(db, 'rooms', roomId));
 }

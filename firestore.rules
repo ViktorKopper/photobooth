@@ -63,8 +63,19 @@ service cloud.firestore {
     }
 
     function participantKeysAreValid(data) {
-      return data.keys().hasOnly(['uid', 'joined', 'photoCount', 'completed', 'lastActiveAt', 'location'])
-        && validLocation(data);
+      return data.keys().hasOnly([
+        'uid',
+        'joined',
+        'photoCount',
+        'completed',
+        'lastActiveAt',
+        'location',
+        'shootingAt'
+      ])
+        && validLocation(data)
+        // Optional — stamped when someone starts a countdown so the other
+        // side can show they're mid-shoot, and simply allowed to go stale.
+        && (!('shootingAt' in data) || data.shootingAt == null || data.shootingAt is timestamp);
     }
 
     function roomKeysAreValid(data) {

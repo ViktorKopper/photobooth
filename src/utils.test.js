@@ -8,10 +8,12 @@ import {
   haversineKm,
   hourOffsetBetween,
   isUsableLocation,
+  milestoneFor,
   normalizeRoomCode,
   sanitizeCaption,
   sanitizeCollageMessage,
   sanitizeLocation,
+  streakFrom,
   timeInZone
 } from './utils.js';
 
@@ -23,9 +25,17 @@ const NEW_YORK = { latitude: 40.71427, longitude: -74.00597, timezone: 'America/
 describe('haversineKm', () => {
   it('matches known real-world distances', () => {
     // Bratislava to Vienna is the classic "55 km" pair.
-    expect(haversineKm(48.14816, 17.10674, 48.20849, 16.37208)).toBeCloseTo(55, 0);
-    expect(haversineKm(48.14816, 17.10674, 40.71427, -74.00597)).toBeGreaterThan(6800);
-    expect(haversineKm(48.14816, 17.10674, 40.71427, -74.00597)).toBeLessThan(6900);
+    expect(haversineKm(BRATISLAVA.latitude, BRATISLAVA.longitude, VIENNA.latitude, VIENNA.longitude))
+      .toBeCloseTo(55, 0);
+
+    const toNewYork = haversineKm(
+      BRATISLAVA.latitude,
+      BRATISLAVA.longitude,
+      NEW_YORK.latitude,
+      NEW_YORK.longitude
+    );
+    expect(toNewYork).toBeGreaterThan(6800);
+    expect(toNewYork).toBeLessThan(6900);
   });
 
   it('is zero for a point against itself', () => {
@@ -116,6 +126,82 @@ describe('daysTogether', () => {
     expect(daysTogether(START, new Date('2026-01-12T12:00:00'))).toBeNull();
     expect(daysTogether('')).toBeNull();
     expect(daysTogether('not-a-date')).toBeNull();
+  });
+});
+
+describe('milestoneFor', () => {
+  it('marks a hundred-day landmark on the day itself', () => {
+    expect(milestoneFor(200)).toMatchObject({ reached: true, days: 200 });
+    expect(milestoneFor(200).label).toBe('200 days together');
+  });
+
+  it('prefers the anniversary wording over the raw day number', () => {
+    expect(milestoneFor(365).label).toBe('One year together');
+    expect(milestoneFor(730).label).toBe('2 years together');
+  });
+
+  it('counts down to whichever landmark comes first', () => {
+    expect(milestoneFor(192)).toMatchObject({ reached: false, days: 200, remaining: 8 });
+    // 365 arrives before 400, so the year wins here.
+    expect(milestoneFor(350)).toMatchObject({ reached: false, days: 365, remaining: 15 });
+    // ...but past it, the next hundred is nearer again.
+    expect(milestoneFor(370)).toMatchObject({ reached: false, days: 400, remaining: 30 });
+  });
+
+  it('always leaves at least one day to go', () => {
+    for (let day = 1; day < 800; day += 1) {
+      const milestone = milestoneFor(day);
+      if (!milestone.reached) {
+        expect(milestone.remaining).toBeGreaterThan(0);
+        expect(milestone.days).toBeGreaterThan(day);
+      }
+    }
+  });
+
+  it('returns null for nonsense', () => {
+    expect(milestoneFor(0)).toBeNull();
+    expect(milestoneFor(-5)).toBeNull();
+    expect(milestoneFor(null)).toBeNull();
+  });
+});
+
+describe('streakFrom', () => {
+  const at = (daysAgo, hour = 12) => {
+    const date = new Date(2026, 6, 24 - daysAgo, hour);
+    return { roomId: `R${daysAgo}`, at: date.getTime() };
+  };
+  const TODAY = new Date(2026, 6, 24, 18);
+
+  it('counts consecutive days back from today', () => {
+    expect(streakFrom([at(0), at(1), at(2)], TODAY)).toBe(3);
+  });
+
+  it('stops at the first gap', () => {
+    expect(streakFrom([at(0), at(1), at(3), at(4)], TODAY)).toBe(2);
+  });
+
+  it('keeps the streak alive if the last booth was yesterday', () => {
+    expect(streakFrom([at(1), at(2)], TODAY)).toBe(2);
+  });
+
+  it('breaks once a whole day has been missed', () => {
+    expect(streakFrom([at(2), at(3)], TODAY)).toBe(0);
+  });
+
+  it('counts several booths in one day only once', () => {
+    expect(streakFrom([at(0, 9), at(0, 14), at(0, 22), at(1)], TODAY)).toBe(2);
+  });
+
+  it('treats late night and just after midnight as different days', () => {
+    const lateLastNight = { roomId: 'A', at: new Date(2026, 6, 23, 23, 50).getTime() };
+    const justAfterMidnight = { roomId: 'B', at: new Date(2026, 6, 24, 0, 10).getTime() };
+    expect(streakFrom([lateLastNight, justAfterMidnight], TODAY)).toBe(2);
+  });
+
+  it('handles nothing at all', () => {
+    expect(streakFrom([], TODAY)).toBe(0);
+    expect(streakFrom(null, TODAY)).toBe(0);
+    expect(streakFrom([{ roomId: 'X' }], TODAY)).toBe(0);
   });
 });
 

@@ -86,6 +86,73 @@ export function daysTogether(anniversaryDate, referenceDate = new Date()) {
   return Math.round((todayUtc - startUtc) / 86400000) + 1;
 }
 
+// Round numbers worth marking. Hundreds are the everyday rhythm; the
+// yearly figures are folded in because "one year" lands harder than "day
+// 365" does.
+const MILESTONE_STEP = 100;
+const YEAR_MILESTONES = [365, 730, 1095, 1460, 1825];
+
+// Describes where the pair sits relative to the next round number: either
+// standing on one today, or counting down to it.
+export function milestoneFor(dayCount) {
+  if (!Number.isFinite(dayCount) || dayCount < 1) return null;
+
+  if (dayCount === 365) return { reached: true, days: dayCount, label: 'One year together' };
+  if (YEAR_MILESTONES.includes(dayCount)) {
+    return { reached: true, days: dayCount, label: `${dayCount / 365} years together` };
+  }
+  if (dayCount % MILESTONE_STEP === 0) {
+    return { reached: true, days: dayCount, label: `${dayCount} days together` };
+  }
+
+  // Whichever comes first: the next hundred, or the next anniversary.
+  const nextHundred = (Math.floor(dayCount / MILESTONE_STEP) + 1) * MILESTONE_STEP;
+  const nextYear = YEAR_MILESTONES.find((value) => value > dayCount);
+  const next = nextYear && nextYear < nextHundred ? nextYear : nextHundred;
+
+  return {
+    reached: false,
+    days: next,
+    remaining: next - dayCount,
+    label: next === 365 ? 'one year' : next % 365 === 0 ? `${next / 365} years` : `day ${next}`
+  };
+}
+
+// How many days in a row the pair has made a booth, counting back from
+// today. A gap of a single day ends the run.
+//
+// Timestamps are bucketed by local calendar day rather than by elapsed
+// hours: two booths at 23:50 and 00:10 are on different days even though
+// they are twenty minutes apart, and that is how anyone would count it.
+export function streakFrom(entries, referenceDate = new Date()) {
+  if (!Array.isArray(entries) || !entries.length) return 0;
+
+  const dayNumber = (ms) => {
+    const date = new Date(ms);
+    return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
+  };
+
+  const days = new Set(
+    entries.filter((entry) => Number.isFinite(entry?.at)).map((entry) => dayNumber(entry.at))
+  );
+  if (!days.size) return 0;
+
+  const today = dayNumber(referenceDate.getTime());
+
+  // Yesterday still counts as a live streak — it only breaks once a whole
+  // day has passed with nothing in it.
+  let cursor = days.has(today) ? today : days.has(today - 1) ? today - 1 : null;
+  if (cursor === null) return 0;
+
+  let streak = 0;
+  while (days.has(cursor)) {
+    streak += 1;
+    cursor -= 1;
+  }
+
+  return streak;
+}
+
 // Great-circle distance between two points, in kilometres. Uses the mean
 // Earth radius — good to a few tenths of a percent, far beyond what "we're
 // 1 847 km apart" needs to convey.

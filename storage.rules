@@ -28,15 +28,23 @@ service firebase.storage {
         );
     }
 
-    // The shared collage: one file per room, written by whichever partner
-    // publishes it and readable by both. Sits one level above the per-role
-    // photo folders so it doesn't collide with the rule below.
-    match /photobooth/{roomId}/collage.png {
-      allow read: if isParticipant(roomId);
-      allow create, update: if isParticipant(roomId)
+    // Saved collages, one per booth, kept outside the photobooth/ prefix so
+    // they survive both the two-day Storage lifecycle sweep and the booth
+    // being deleted.
+    //
+    // Access is granted to any signed-in user rather than to participants
+    // of the room, because by design these outlive the room document that
+    // participation is derived from — once the booth is gone there is
+    // nothing left to check against. The file name is the room's own
+    // twelve-character random id, so this matches the protection the rooms
+    // themselves already rely on: unguessable, not enumerable.
+    match /keepsakes/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && fileName.matches('[A-Z0-9]{6,32}\\.png')
         && request.resource.size < 25 * 1024 * 1024
         && request.resource.contentType.matches('image/png');
-      allow delete: if isParticipant(roomId);
+      allow delete: if signedIn();
     }
 
     match /photobooth/{roomId}/{role}/{fileName} {

@@ -5,6 +5,7 @@ import { clearCollageImageCache, COLLAGE_THEMES, EXPORT_PRESETS, generateCollage
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
 import { describeLocation, describeSearchResult, fetchWeather, searchCities } from './geo.js';
 import { ICONS, weatherIcon } from './icons.js';
+import { forgetAllKeepsakes, listKeepsakes, rememberKeepsake } from './keepsakes.js';
 import { celebrateCompletion, playShutterSound, triggerShutterFeedback } from './ui/feedback.js';
 import { countUp, prefersReducedMotion, restartAnimation } from './ui/motion.js';
 import { mountThemeToggle } from './ui/theme.js';
@@ -36,6 +37,7 @@ import {
   getRoomIdFromUrl,
   hourOffsetBetween,
   isUsableLocation,
+  milestoneFor,
   normalizeRoomCode,
   otherRole,
   roomLink,
@@ -43,6 +45,7 @@ import {
   sanitizeCaption,
   sanitizeCollageMessage,
   sanitizeLocation,
+  streakFrom,
   sleep,
   timeInZone
 } from './utils.js';
@@ -98,6 +101,7 @@ const state = {
   syncScheduledFor: null,
   syncTimers: [],
   clockTimer: null,
+  shootingTimer: null,
   weather: { viktor: null, jericka: null },
   weatherKey: '',
   weatherTimer: null,
@@ -136,6 +140,71 @@ function formatDays(count) {
 function togetherLine(anniversaryDate = ANNIVERSARY_DATE) {
   const count = daysTogether(anniversaryDate);
   return count ? `${ICONS.hearts} Together for ${formatDays(count)}` : '';
+}
+
+// Either "you're standing on a round number today" or a nudge towards the
+// next one. Shown only when it's close enough to mean something — a
+// countdown from 80 days out is just noise.
+function buildMilestoneLine() {
+  const milestone = milestoneFor(daysTogether(ANNIVERSARY_DATE));
+  if (!milestone) return '';
+
+  if (milestone.reached) {
+    return `<p class="milestone-line milestone-reached">${ICONS.heartFilled} ${escapeHtml(milestone.label)}</p>`;
+  }
+
+  if (milestone.remaining > 30) return '';
+
+  const days = milestone.remaining === 1 ? '1 day' : `${milestone.remaining} days`;
+  return `<p class="milestone-line">${escapeHtml(days)} to ${escapeHtml(milestone.label)}</p>`;
+}
+
+// A shooting stamp is never cleared — it's simply allowed to go stale, so
+// a browser closing mid-countdown can't strand the indicator. The window
+// covers the longest countdown plus the moment of capture.
+const SHOOTING_WINDOW_MS = 16000;
+
+function isShootingNow(stamp) {
+  const millis = stamp?.toMillis?.();
+  if (!Number.isFinite(millis)) return false;
+  const age = Date.now() - millis;
+  // A clock skewed slightly ahead of the server would otherwise read as a
+  // stamp from the future and never expire.
+  return age >= -5000 && age < SHOOTING_WINDOW_MS;
+}
+
+// Collages saved from past booths. The rooms behind these are long gone —
+// the files live outside the prefix that gets swept — so this is the only
+// trail back to them.
+function buildKeepsakeGallery() {
+  const keepsakes = listKeepsakes();
+  if (!keepsakes.length) return '';
+
+  const tiles = keepsakes
+    .slice(0, 12)
+    .map(
+      (keepsake) => `
+        <a class="keepsake" href="${escapeAttr(keepsake.url)}" target="_blank" rel="noopener"
+           title="Booth ${escapeAttr(keepsake.roomId)}">
+          <img src="${escapeAttr(keepsake.url)}" alt="Collage from booth ${escapeAttr(keepsake.roomId)}" loading="lazy" />
+        </a>
+      `
+    )
+    .join('');
+
+  return `
+    <div class="keepsakes">
+      <p class="field-label">Your collages</p>
+      <div class="keepsake-grid">${tiles}</div>
+      <button type="button" class="ghost small" id="clearKeepsakesBtn">Clear this list</button>
+    </div>
+  `;
+}
+
+function buildStreakLine() {
+  const streak = streakFrom(listRooms());
+  if (streak < 2) return '';
+  return `<p class="milestone-line">${ICONS.camera} ${streak} days in a row</p>`;
 }
 
 registerServiceWorker();
@@ -272,6 +341,8 @@ function renderLanding() {
         <h1>Viktor & Jericka Photobooth</h1>
         <p class="hero-text">Even far apart, we can still make memories together.</p>
         <p class="anniversary-line" id="landingDays">${togetherLine()}</p>
+        ${buildMilestoneLine()}
+        ${buildStreakLine()}
 
         <label class="field-label" for="messageInput">Collage message</label>
         <input id="messageInput" class="text-input" maxlength="80" value="${escapeAttr(state.customMessage)}" />
@@ -293,6 +364,8 @@ function renderLanding() {
           <button class="primary" id="createBtn">Create new booth</button>
           <button class="secondary" id="joinBtn">Join booth</button>
         </div>
+
+        ${buildKeepsakeGallery()}
 
         ${
           boothCount
@@ -321,6 +394,15 @@ function renderLanding() {
   document.querySelector('#createBtn').addEventListener('click', () => renderRoleGate('create'));
   document.querySelector('#joinBtn').addEventListener('click', () => renderJoinByCode());
   document.querySelector('#resetAllBtn')?.addEventListener('click', resetAllBoothsFlow);
+
+  document.querySelector('#clearKeepsakesBtn')?.addEventListener('click', () => {
+    // Only clears this device's list. The files themselves stay put, so a
+    // link kept elsewhere still works and the other person's list is
+    // untouched.
+    if (!confirm('Remove these collages from this list? The images themselves are kept.')) return;
+    forgetAllKeepsakes();
+    renderLanding();
+  });
 }
 
 // Returns markup, not plain text — it carries drawn icons — so the city
@@ -796,6 +878,12 @@ function renderRoomShell() {
       return;
     }
 
+    const moveButton = event.target.closest('.thumb-move-btn');
+    if (moveButton) {
+      swapPhotosFlow(Number(moveButton.dataset.from), Number(moveButton.dataset.to));
+      return;
+    }
+
     const reactionButton = event.target.closest('.thumb-reaction-btn');
     if (reactionButton) {
       toggleReactionFlow(reactionButton.dataset.role, Number(reactionButton.dataset.index));
@@ -956,6 +1044,20 @@ function buildThumbRow(role) {
         ? `<button type="button" class="thumb-retake-btn" data-index="${index}" title="Retake this photo" aria-label="Retake photo ${index}">${ICONS.refresh}</button>`
         : '';
 
+      // Reordering only makes sense between two photos that both exist, so
+      // an arrow appears only where there's a filled neighbour to trade
+      // places with.
+      const moveButtons = role === state.role
+        ? [
+            ownerPhotos.get(index - 1)
+              ? `<button type="button" class="thumb-move-btn thumb-move-left" data-from="${index}" data-to="${index - 1}" title="Move earlier" aria-label="Move photo ${index} earlier">${ICONS.arrowLeft}</button>`
+              : '',
+            ownerPhotos.get(index + 1)
+              ? `<button type="button" class="thumb-move-btn thumb-move-right" data-from="${index}" data-to="${index + 1}" title="Move later" aria-label="Move photo ${index} later">${ICONS.arrowRight}</button>`
+              : ''
+          ].join('')
+        : '';
+
       // Anyone can react to any photo — reacting is the viewer's own
       // expression, not something the photo owner controls.
       const partnerRole = otherRole(state.role);
@@ -976,7 +1078,7 @@ function buildThumbRow(role) {
 
       const replacing = role === state.role && state.replacingIndex === index;
 
-      return `<div class="thumb-slot filled${replacing ? ' replacing' : ''}"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}${retakeButton}${partnerBadge}${reactionButton}</div>`;
+      return `<div class="thumb-slot filled${replacing ? ' replacing' : ''}"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}${retakeButton}${partnerBadge}${reactionButton}${moveButtons}</div>`;
     }
     return `<div class="thumb-slot empty">${index}</div>`;
   });
@@ -1171,6 +1273,17 @@ function updateRoomView() {
     }
   }
 
+  // Recorded by whoever is looking, not just by whoever pressed save — so
+  // both of you end up holding the memory rather than only one.
+  if (state.room.collage?.downloadUrl) {
+    rememberKeepsake({
+      roomId: state.roomId,
+      url: state.room.collage.downloadUrl,
+      theme: state.room.collage.theme || '',
+      layout: state.room.collage.layout || ''
+    });
+  }
+
   maybeRefreshWeather();
   renderDistancePanel();
 
@@ -1180,6 +1293,10 @@ function updateRoomView() {
 
   const progressPanel = document.querySelector('#progressPanel');
   const roomMessage = document.querySelector('#roomMessage');
+  roomMessage?.classList.toggle(
+    'is-live',
+    isShootingNow(state.room.participants?.[otherRole(state.role)]?.shootingAt)
+  );
   if (progressPanel) {
     progressPanel.innerHTML = `
       <div class="progress-row"><span>Viktor</span><strong>${viktorCount}/3</strong></div>
@@ -1206,8 +1323,19 @@ function updateRoomView() {
     celebrateCompletion();
   }
 
+  const partnerShooting = isShootingNow(state.room.participants?.[theirRole]?.shootingAt);
+
+  // The stamp expires on a clock, not on a write, so nothing would bring
+  // the view back once it goes stale. One scheduled re-check clears it.
+  window.clearTimeout(state.shootingTimer);
+  if (partnerShooting) {
+    state.shootingTimer = window.setTimeout(updateRoomView, 2000);
+  }
+
   if (roomMessage) {
-    if (state.replacingIndex) {
+    if (partnerShooting) {
+      roomMessage.textContent = `${ROLES[theirRole].name} is taking a photo right now...`;
+    } else if (state.replacingIndex) {
       roomMessage.textContent = `Retaking photo ${state.replacingIndex}. Take a new one, or cancel below.`;
     } else if (bothComplete) {
       roomMessage.textContent = 'Both of you are done. You can generate your collage now.';
@@ -1256,6 +1384,14 @@ async function takePhotoFlow() {
 
   cameraActions.classList.add('disabled');
   countdown.classList.remove('hidden');
+
+  // Let the other side know, without waiting on it — the countdown must
+  // not stall behind a network round trip.
+  roomApi()
+    .then(({ markShooting }) =>
+      markShooting({ roomId: state.roomId, uid: state.user.uid, role: state.role })
+    )
+    .catch(() => undefined);
 
   for (let number = state.timerSeconds; number >= 1; number -= 1) {
     countdown.textContent = number;
@@ -1606,6 +1742,21 @@ async function saveCaptionEditor() {
 // realtime subscription re-renders the actual state moments later anyway;
 // if the write ever fails, it silently reverts on the next snapshot rather
 // than interrupting anyone with an alert over a heart tap.
+async function swapPhotosFlow(from, to) {
+  try {
+    const { swapPhotos } = await roomApi();
+    await swapPhotos({
+      roomId: state.roomId,
+      uid: state.user.uid,
+      role: state.role,
+      indexA: from,
+      indexB: to
+    });
+  } catch (error) {
+    showError(error.message, 'Could not reorder the photos.');
+  }
+}
+
 async function toggleReactionFlow(ownerRole, index) {
   const photo = state.photos.find((item) => item.owner === ownerRole && item.index === index);
   if (!photo) return;
@@ -1927,6 +2078,7 @@ function stopSubscriptions() {
   state.unsubscribeRoom = null;
   state.unsubscribePhotos = null;
   clearSyncTimers();
+  window.clearTimeout(state.shootingTimer);
   stopClockTicker();
   stopWeatherTicker();
   state.syncScheduledFor = null;

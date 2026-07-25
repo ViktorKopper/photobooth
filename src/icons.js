@@ -90,6 +90,10 @@ export const ICONS = {
     '<path d="M20 12a8 8 0 1 1-2.6-5.9" stroke-linecap="round"/><path d="M20 4v4.5h-4.5" stroke-linecap="round" stroke-linejoin="round"/>'
   ),
 
+  arrowLeft: svg('<path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/>'),
+
+  arrowRight: svg('<path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round"/>'),
+
   pencil: svg(
     '<path d="M4 20l1-4 11-11 3 3L8 19z" stroke-linejoin="round"/><path d="M14.5 6.5l3 3" stroke-linecap="round"/>'
   )

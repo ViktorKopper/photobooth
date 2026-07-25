@@ -475,6 +475,19 @@ p {
   font-size: var(--fs-sm);
 }
 
+.milestone-line {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+/* Landing on a round number is worth more than counting towards one. */
+.milestone-reached {
+  color: var(--rose-dark);
+  font-size: var(--fs-sm);
+  font-weight: 800;
+}
+
 #notifyToggleBtn {
   margin-top: 12px;
 }
@@ -1068,6 +1081,52 @@ p {
   transition-duration: var(--dur-fast);
 }
 
+/* Reorder arrows, tucked against the sides of a print. */
+.thumb-move-btn {
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 24px;
+  margin-top: -12px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-xs);
+  color: var(--rose-dark);
+  background: var(--glass-solid);
+  box-shadow: var(--elev-1);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-soft),
+    transform var(--dur-slow) var(--ease-spring);
+}
+
+.thumb-move-left {
+  left: 2px;
+}
+
+.thumb-move-right {
+  right: 2px;
+}
+
+/* Revealed on hover so three photos aren't permanently crowded by arrows —
+   but always present for keyboard and touch, which have no hover at all. */
+.thumb-slot:hover .thumb-move-btn,
+.thumb-move-btn:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .thumb-move-btn {
+    opacity: 1;
+  }
+}
+
+.thumb-move-btn:active {
+  transform: scale(0.88);
+  transition-duration: var(--dur-fast);
+}
+
 .thumb-slot.replacing {
   box-shadow: 0 0 0 3px var(--rose) !important;
 }
@@ -1252,6 +1311,22 @@ p {
   color: var(--rose-dark);
   background: var(--note-bg);
   line-height: 1.5;
+}
+
+/* While the other person is mid-shoot, the note quietly pulses — enough to
+   catch the eye without competing with the live camera beside it. */
+.soft-message.is-live {
+  animation: livePulse 1.6s var(--ease-soft) infinite;
+}
+
+@keyframes livePulse {
+  0%,
+  100% {
+    background: var(--note-bg);
+  }
+  50% {
+    background: var(--hover-bg);
+  }
 }
 
 .soft-message::after {
@@ -1633,6 +1708,51 @@ p {
   border: 1px solid var(--border);
   font-weight: 850;
   text-decoration: none;
+}
+
+.keepsakes {
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--border);
+}
+
+.keepsake-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 10px;
+  margin: 4px 0 14px;
+}
+
+/* Each one hangs on the page like a print in an album. */
+.keepsake {
+  display: block;
+  overflow: hidden;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--r-sm);
+  background: var(--print);
+  box-shadow: var(--elev-1);
+  transition: transform var(--dur-slow) var(--ease-spring),
+    box-shadow var(--dur-base) var(--ease-soft);
+}
+
+.keepsake:nth-child(odd) {
+  transform: rotate(-1.6deg);
+}
+
+.keepsake:nth-child(even) {
+  transform: rotate(1.2deg);
+}
+
+.keepsake:hover {
+  transform: rotate(0deg) scale(1.06);
+  box-shadow: var(--elev-2);
+}
+
+.keepsake img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .danger-zone {
