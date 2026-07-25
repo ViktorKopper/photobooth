@@ -88,6 +88,38 @@ export const COLLAGE_THEMES = [
     }
   },
   {
+    id: 'notebook',
+    label: 'Notebook',
+    palette: {
+      bgTop: '#fdf6f2',
+      bgMid: '#fff3f6',
+      bgBottom: '#fffaf6',
+      heart: '#e85d85',
+      title: '#7a2740',
+      subtitle: '#9c7080',
+      message: '#c7345a',
+      label: '#7a2740',
+      meta: '#a58490',
+      cardShadow: 'rgba(74, 44, 23, 0.18)',
+      cardBg: '#ffffff',
+      innerBorder: 'rgba(190, 150, 165, 0.35)',
+      photoTint: '#e85d85',
+      photoFilter: '',
+      stripBg: 'rgba(255, 255, 255, 0.6)',
+      connectorHeart: '#e85d85',
+      viktorTape: '#a8bfa0',
+      jerickaTape: '#f4a6c0',
+      viktorInk: '#2a5a86',
+      jerickaInk: '#9b2948',
+      // The three flags that make this theme a notebook page rather than
+      // just another colourway: ruled lines instead of heart confetti, and
+      // a marker-pen title to match the app the photos were taken in.
+      ruled: true,
+      confetti: false,
+      titleFont: 'marker'
+    }
+  },
+  {
     id: 'mono',
     label: 'Mono',
     palette: {
@@ -519,6 +551,33 @@ function drawHeartConfetti(ctx, width, height) {
   ctx.restore();
 }
 
+// Ruled lines with a margin down the left, matching the notebook the
+// photos were taken in. Spacing scales with the page so the rules stay
+// proportionally the same across the three layout sizes.
+function drawRuledPage(ctx, width, height) {
+  const spacing = Math.max(28, Math.round(width * 0.026));
+  const marginX = Math.round(width * 0.075);
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(157, 195, 230, 0.38)';
+  ctx.lineWidth = 1.5;
+
+  for (let y = spacing; y < height; y += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(232, 93, 133, 0.4)';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(marginX, 0);
+  ctx.lineTo(marginX, height);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawPageBackground(ctx, width, height) {
   const gradient = ctx.createLinearGradient(0, 0, width, height);
   gradient.addColorStop(0, PALETTE.bgTop);
@@ -527,7 +586,9 @@ function drawPageBackground(ctx, width, height) {
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
 
-  drawHeartConfetti(ctx, width, height);
+  if (PALETTE.ruled) drawRuledPage(ctx, width, height);
+  // Hearts and rules together would be busy; a theme picks one.
+  if (PALETTE.confetti !== false) drawHeartConfetti(ctx, width, height);
 }
 
 function drawHeaderBlock(ctx, {
@@ -540,14 +601,20 @@ function drawHeaderBlock(ctx, {
   subtitleSize,
   messageSize,
   maxMessageWidth,
-  handwritingReady
+  handwritingReady,
+  markerReady
 }) {
   ctx.textAlign = 'center';
 
   // The title is the one element that should dominate the header — bigger
-  // and bolder than everything else around it.
+  // and bolder than everything else around it. Themes that want a
+  // handwritten page ask for the marker instead of the serif, falling back
+  // to the serif if the font never loaded.
+  const useMarker = PALETTE.titleFont === 'marker' && markerReady;
   ctx.fillStyle = PALETTE.title;
-  ctx.font = `bold ${titleSize}px Georgia, serif`;
+  ctx.font = useMarker
+    ? `400 ${Math.round(titleSize * 0.82)}px ${MARKER_FONT}`
+    : `bold ${titleSize}px Georgia, serif`;
   ctx.fillText('Viktor & Jericka', centerX, titleY);
 
   ctx.fillStyle = PALETTE.subtitle;
@@ -766,7 +833,8 @@ function drawGridLayout(ctx, dims, payload) {
     subtitleSize: 26,
     messageSize: 48,
     maxMessageWidth: width - 400,
-    handwritingReady
+    handwritingReady,
+    markerReady
   });
 
   for (let row = 0; row < 3; row += 1) {
@@ -863,7 +931,8 @@ function drawStripLayout(ctx, dims, payload) {
     subtitleSize: 16,
     messageSize: 32,
     maxMessageWidth: width - 160,
-    handwritingReady
+    handwritingReady,
+    markerReady
   });
 
   let y = headerHeight;
@@ -956,7 +1025,8 @@ function drawHeroLayout(ctx, dims, payload) {
     subtitleSize: 26,
     messageSize: 50,
     maxMessageWidth: width - 300,
-    handwritingReady
+    handwritingReady,
+    markerReady
   });
 
   const heroOwner = pickHeroOwner(roomId);
