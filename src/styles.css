@@ -479,6 +479,15 @@ p {
   margin-top: 12px;
 }
 
+/* Sets the expectation honestly: these notifications are fired by the page
+   itself, so they can only appear while the page is actually running. */
+.notify-hint {
+  margin: 6px 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 .city-picker {
   position: relative;
 }

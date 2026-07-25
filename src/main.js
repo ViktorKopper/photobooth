@@ -856,6 +856,7 @@ function renderRoomShell() {
           <p id="anniversaryLine" class="anniversary-line hidden"></p>
           <div id="distancePanel" class="distance-panel hidden"></div>
           <button type="button" class="secondary small" id="notifyToggleBtn">${ICONS.bell} Enable notifications</button>
+          <p class="notify-hint">Only arrive while the booth is open on screen — a closed app can't wake itself up.</p>
 
           <div class="share-box">
             <label class="field-label">Invite ${escapeHtml(ROLES[otherRole(state.role)]?.name || 'your partner')}</label>
