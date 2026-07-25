@@ -27,6 +27,22 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='72' font-size='72' text-anchor='middle' fill='%23c7345a'%3E%E2%99%A1%3C/text%3E%3C/svg%3E"
     />
     <title>Viktor & Jericka Photobooth</title>
+
+    <!-- Runs before first paint so the page never flashes the wrong theme.
+         A saved choice wins; otherwise it follows the system setting. -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('photobooth-theme');
+          var dark = saved
+            ? saved === 'dark'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

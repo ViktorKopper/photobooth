@@ -185,6 +185,119 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
+/* Drawn icons, replacing the emoji the app used to lean on. They inherit
+   colour and scale with their surrounding text, so one rule covers every
+   place they appear. */
+.icon {
+  width: 1.05em;
+  height: 1.05em;
+  vertical-align: -0.16em;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+
+/* Day/night switch. Fixed to the corner so it's reachable from every
+   screen without each render function having to include it. */
+.theme-toggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 25;
+  width: 64px;
+  height: 34px;
+  padding: 0;
+  border-radius: var(--r-pill);
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--elev-1);
+  transition: transform var(--dur-slow) var(--ease-spring),
+    background var(--dur-base) var(--ease-soft);
+}
+
+.theme-toggle:hover {
+  transform: scale(1.05);
+}
+
+.theme-toggle:active {
+  transform: scale(0.94);
+  transition-duration: var(--dur-fast);
+}
+
+.theme-toggle-icon {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  color: var(--rose-dark);
+  transition: opacity var(--dur-base) var(--ease-soft),
+    transform var(--dur-slow) var(--ease-spring);
+}
+
+.theme-toggle-sun {
+  left: 9px;
+}
+
+.theme-toggle-moon {
+  right: 9px;
+}
+
+/* The knob slides across and the two icons trade places with it — the sun
+   dims as the moon lights up rather than one simply replacing the other. */
+.theme-toggle-knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(135deg, #f28aaa, #c7345a);
+  box-shadow: 0 3px 10px rgba(184, 36, 73, 0.35);
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+
+[data-theme='dark'] .theme-toggle-knob {
+  transform: translateX(30px);
+  background: linear-gradient(135deg, #6d7bb5, #3b3f6b);
+}
+
+[data-theme='light'] .theme-toggle-moon,
+[data-theme='dark'] .theme-toggle-sun {
+  opacity: 0.35;
+  transform: scale(0.82) rotate(-25deg);
+}
+
+[data-theme='light'] .theme-toggle-sun,
+[data-theme='dark'] .theme-toggle-moon {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+@media (max-width: 520px) {
+  .theme-toggle {
+    top: 10px;
+    right: 10px;
+    width: 56px;
+    height: 30px;
+  }
+
+  .theme-toggle-knob {
+    width: 22px;
+    height: 22px;
+  }
+
+  [data-theme='dark'] .theme-toggle-knob {
+    transform: translateX(26px);
+  }
+}
+
 .shell {
   position: relative;
   z-index: 1;
@@ -268,7 +381,7 @@ select:focus-visible {
   border-radius: var(--r-pill);
   background: linear-gradient(135deg, #f28aaa, #c7345a);
   box-shadow: 0 16px 38px rgba(199, 52, 90, 0.28);
-  font: 44px Georgia, serif;
+  font: 40px Georgia, serif;
   /* A slow idle beat. Small enough to read as "alive" rather than as an
      animation demanding attention. */
   animation: heartbeat 1.8s var(--ease-soft) infinite;
@@ -301,6 +414,13 @@ select:focus-visible {
   58% {
     transform: scale(1.02);
   }
+}
+
+.heart-badge .icon {
+  width: 38px;
+  height: 38px;
+  vertical-align: 0;
+  stroke-width: 1.5;
 }
 
 .error-badge {
@@ -412,7 +532,7 @@ p {
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  background: rgba(255, 245, 248, 0.72);
+  background: var(--note-bg);
 }
 
 .distance-visual {
@@ -1479,7 +1599,7 @@ p {
   padding: 18px;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  background: rgba(255, 245, 248, 0.72);
+  background: var(--note-bg);
   text-align: center;
 }
 
@@ -1763,83 +1883,85 @@ p {
    the ruled lines dim instead of glowing. Two things deliberately stay
    light — the polaroid frame (a print is white card in any light) and the
    QR panel (scanners need the contrast). */
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6e8ec;
-    background: #211a1d;
+/* Driven by a data-theme attribute rather than the media query directly.
+   An inline script in index.html sets it before first paint, from either a
+   saved preference or the system setting — which means the theme can be
+   overridden by hand without this block having to be written twice. */
+:root[data-theme='dark'] {
+  color: #f6e8ec;
+  background: #211a1d;
 
-    --paper: #2e2329;
-    --paper-raised: #382a31;
-    --paper-edge: rgba(255, 214, 228, 0.16);
-    --note-bg: #3a2b33;
-    --print: #f2e8ea;
-    --field-bg: rgba(255, 255, 255, 0.07);
-    --slot-bg: rgba(255, 255, 255, 0.06);
-    --hover-bg: rgba(244, 166, 192, 0.16);
-    --glass: rgba(255, 255, 255, 0.09);
-    --glass-edge: rgba(255, 255, 255, 0.16);
-    --glass-solid: rgba(255, 255, 255, 0.12);
-    --rule: rgba(157, 195, 230, 0.13);
-    --margin-rule: rgba(232, 93, 133, 0.3);
-    --stitch: rgba(244, 166, 192, 0.26);
-    --page: linear-gradient(140deg, #211a1d, #2b1f26 58%, #1e1719);
+  --paper: #2e2329;
+  --paper-raised: #382a31;
+  --paper-edge: rgba(255, 214, 228, 0.16);
+  --note-bg: #3a2b33;
+  --print: #f2e8ea;
+  --field-bg: rgba(255, 255, 255, 0.07);
+  --slot-bg: rgba(255, 255, 255, 0.06);
+  --hover-bg: rgba(244, 166, 192, 0.16);
+  --glass: rgba(255, 255, 255, 0.09);
+  --glass-edge: rgba(255, 255, 255, 0.16);
+  --glass-solid: rgba(255, 255, 255, 0.12);
+  --rule: rgba(157, 195, 230, 0.13);
+  --margin-rule: rgba(232, 93, 133, 0.3);
+  --stitch: rgba(244, 166, 192, 0.26);
+  --page: linear-gradient(140deg, #211a1d, #2b1f26 58%, #1e1719);
 
-    --bg: #211a1d;
-    --text: #f6e8ec;
-    --muted: #c8a6b1;
-    /* Carries headings, labels and secondary button text, so it has to
-       flip to the light end of the rose ramp or half the interface
-       disappears. */
-    --rose-dark: #f4a6c0;
-    --rose: #f07a9f;
-    --border: rgba(244, 166, 192, 0.22);
+  --bg: #211a1d;
+  --text: #f6e8ec;
+  --muted: #c8a6b1;
+  /* Carries headings, labels and secondary button text, so it has to
+     flip to the light end of the rose ramp or half the interface
+     disappears. */
+  --rose-dark: #f4a6c0;
+  --rose: #f07a9f;
+  --border: rgba(244, 166, 192, 0.22);
 
-    --sage: #b6cbae;
-    --sage-deep: #d3e3cb;
-    --sage-bg: rgba(168, 191, 160, 0.2);
-    --danger-text: #ff9db0;
-    --danger-edge: rgba(255, 157, 176, 0.3);
-    --focus-ring: rgba(244, 166, 192, 0.7);
+  --sage: #b6cbae;
+  --sage-deep: #d3e3cb;
+  --sage-bg: rgba(168, 191, 160, 0.2);
+  --danger-text: #ff9db0;
+  --danger-edge: rgba(255, 157, 176, 0.3);
+  --focus-ring: rgba(244, 166, 192, 0.7);
 
-    /* Shadows do almost nothing on a dark ground; separation has to come
-       from the surface tints above, so these are pulled right back. */
-    --elev-1: 0 2px 8px rgba(0, 0, 0, 0.3);
-    --elev-2: 0 8px 24px rgba(0, 0, 0, 0.38);
-    --elev-3: 0 24px 60px rgba(0, 0, 0, 0.5);
-    --elev-rose: 0 10px 26px rgba(184, 36, 73, 0.4);
+  /* Shadows do almost nothing on a dark ground; separation has to come
+     from the surface tints above, so these are pulled right back. */
+  --elev-1: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --elev-2: 0 8px 24px rgba(0, 0, 0, 0.38);
+  --elev-3: 0 24px 60px rgba(0, 0, 0, 0.5);
+  --elev-rose: 0 10px 26px rgba(184, 36, 73, 0.4);
 
-    --viktor: #7cb0e0;
-    --jericka: #f28aaa;
-  }
+  --viktor: #7cb0e0;
+  --jericka: #f28aaa;
+}
 
-  /* Both print surfaces stay light, so everything sitting on them keeps
-     its daytime colours rather than inheriting the night palette. */
-  .caption-input::placeholder {
-    color: rgba(79, 39, 49, 0.45);
-  }
+/* Both print surfaces stay light, so everything sitting on them keeps its
+   daytime colours rather than inheriting the night palette. */
+[data-theme='dark'] .caption-input::placeholder {
+  color: rgba(79, 39, 49, 0.45);
+}
 
-  .caption-editor-card .secondary {
-    color: #7a2740;
-    background: rgba(255, 255, 255, 0.85);
-    border-color: rgba(217, 77, 114, 0.28);
-  }
+[data-theme='dark'] .caption-editor-card .secondary {
+  color: #7a2740;
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(217, 77, 114, 0.28);
+}
 
-  .caption-input:focus {
-    border-bottom-color: rgba(217, 77, 114, 0.35);
-  }
+[data-theme='dark'] .caption-input:focus {
+  border-bottom-color: rgba(217, 77, 114, 0.35);
+}
 
-  .qr-code-text {
-    color: #7d4e59;
-  }
+[data-theme='dark'] .qr-code-text {
+  color: #7d4e59;
+}
 
-  /* Grain reads as light specks on a dark surface rather than dark ones. */
-  .card::after {
-    background-image: radial-gradient(rgba(255, 226, 235, 0.1) 0.5px, transparent 0.5px);
-  }
+/* Grain reads as light specks on a dark surface rather than dark ones. */
+[data-theme='dark'] .card::after {
+  background-image: radial-gradient(rgba(255, 226, 235, 0.1) 0.5px, transparent 0.5px);
+}
 
-  .camera-wrap {
-    background: #171013;
-  }
+[data-theme='dark'] .camera-wrap {
+  background: #171013;
 }
 
 /* Honour the system-level request to cut motion. Transitions are reduced

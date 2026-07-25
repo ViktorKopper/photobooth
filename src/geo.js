@@ -41,24 +41,24 @@ const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 // "light drizzle" vs "moderate drizzle" is more precision than a status
 // line needs.
 const WEATHER_CODES = [
-  { max: 0, icon: '☀️', label: 'clear' },
-  { max: 2, icon: '🌤️', label: 'partly cloudy' },
-  { max: 3, icon: '☁️', label: 'overcast' },
-  { max: 48, icon: '🌫️', label: 'fog' },
-  { max: 57, icon: '🌦️', label: 'drizzle' },
-  { max: 67, icon: '🌧️', label: 'rain' },
-  { max: 77, icon: '❄️', label: 'snow' },
-  { max: 82, icon: '🌧️', label: 'showers' },
-  { max: 86, icon: '🌨️', label: 'snow showers' },
-  { max: 99, icon: '⛈️', label: 'thunderstorm' }
+  { max: 0, label: 'clear' },
+  { max: 2, label: 'partly cloudy' },
+  { max: 3, label: 'overcast' },
+  { max: 48, label: 'fog' },
+  { max: 57, label: 'drizzle' },
+  { max: 67, label: 'rain' },
+  { max: 77, label: 'snow' },
+  { max: 82, label: 'showers' },
+  { max: 86, label: 'snow showers' },
+  { max: 99, label: 'thunderstorm' }
 ];
 
 function describeWeatherCode(code) {
   // Guard the low end too: a missing or negative code must not slide into
   // the first bucket and cheerfully report clear skies.
-  if (!Number.isFinite(code) || code < 0) return { icon: '🌡️', label: '' };
+  if (!Number.isFinite(code) || code < 0) return { label: '' };
   const match = WEATHER_CODES.find((entry) => code <= entry.max);
-  return match || { icon: '🌡️', label: '' };
+  return match || { label: '' };
 }
 
 // Current conditions for a stored location. Written defensively on purpose:
@@ -90,7 +90,9 @@ export async function fetchWeather(location, { signal } = {}) {
 
     return {
       temperature: Math.round(temperature),
-      icon: described.icon,
+      // The raw WMO code travels with it so the UI can pick a drawn icon
+      // rather than this module having to know about presentation.
+      code: Number.isFinite(code) ? code : -1,
       label: described.label
     };
   } catch {

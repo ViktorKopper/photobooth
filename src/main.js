@@ -4,6 +4,7 @@ import { capturePhoto, startCamera, stopCamera } from './camera.js';
 import { COLLAGE_THEMES, EXPORT_PRESETS, generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
 import { describeLocation, describeSearchResult, fetchWeather, searchCities } from './geo.js';
+import { ICONS, weatherIcon } from './icons.js';
 import {
   expiredRoomIds,
   forgetAllRooms,
@@ -131,11 +132,56 @@ function formatDays(count) {
 
 function togetherLine(anniversaryDate = ANNIVERSARY_DATE) {
   const count = daysTogether(anniversaryDate);
-  return count ? `💕 Together for ${formatDays(count)}` : '';
+  return count ? `${ICONS.hearts} Together for ${formatDays(count)}` : '';
 }
 
 registerServiceWorker();
+mountThemeToggle();
 bootstrap();
+
+// A day/night switch, mounted once to the body rather than into any screen
+// so it survives every re-render and page turn. The initial attribute is
+// set by an inline script in index.html, before first paint — this only
+// takes over once someone flips it by hand.
+function mountThemeToggle() {
+  if (document.querySelector('#themeToggle')) return;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = 'themeToggle';
+  button.className = 'theme-toggle';
+  button.innerHTML = `
+    <span class="theme-toggle-icon theme-toggle-sun">${ICONS.sun}</span>
+    <span class="theme-toggle-icon theme-toggle-moon">${ICONS.moon}</span>
+    <span class="theme-toggle-knob"></span>
+  `;
+
+  const sync = () => {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    button.setAttribute('aria-pressed', String(dark));
+    button.setAttribute('aria-label', dark ? 'Switch to day theme' : 'Switch to night theme');
+    button.title = dark ? 'Day' : 'Night';
+
+    // Keep the browser chrome and PWA status bar in step with the choice.
+    document
+      .querySelectorAll('meta[name="theme-color"]')
+      .forEach((meta) => meta.setAttribute('content', dark ? '#211a1d' : '#f8b6c8'));
+  };
+
+  button.addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem('photobooth-theme', next);
+    } catch {
+      // A saved preference is a nicety; the toggle still works without it.
+    }
+    sync();
+  });
+
+  document.body.appendChild(button);
+  sync();
+}
 
 // Registers the PWA service worker so the booth can be installed to a
 // phone's home screen and opened like a native app. Never blocks or
@@ -224,7 +270,7 @@ function renderLoading(message) {
   setApp(`
     <main class="shell center-shell">
       <section class="card hero-card fade-in">
-        <div class="heart-badge">♡</div>
+        <div class="heart-badge">${ICONS.heart}</div>
         <h1>Viktor & Jericka Photobooth</h1>
         <p>${message}</p>
         <svg class="loader" viewBox="0 0 48 44" role="img" aria-label="Loading">
@@ -438,11 +484,11 @@ function renderLanding() {
   setApp(`
     <main class="shell center-shell">
       <section class="card hero-card fade-in">
-        <div class="heart-badge">♡</div>
+        <div class="heart-badge">${ICONS.heart}</div>
         <p class="eyebrow">private long-distance couple photobooth</p>
         <h1>Viktor & Jericka Photobooth</h1>
         <p class="hero-text">Even far apart, we can still make memories together.</p>
-        <p class="anniversary-line" id="landingDays">${escapeHtml(togetherLine())}</p>
+        <p class="anniversary-line" id="landingDays">${togetherLine()}</p>
 
         <label class="field-label" for="messageInput">Collage message</label>
         <input id="messageInput" class="text-input" maxlength="80" value="${escapeAttr(state.customMessage)}" />
@@ -486,7 +532,7 @@ function renderLanding() {
   wireCityPicker();
 
   countUp(document.querySelector('#landingDays'), daysTogether(ANNIVERSARY_DATE), {
-    format: (value) => `💕 Together for ${formatDays(value)}`
+    format: (value) => `${ICONS.hearts} Together for ${formatDays(value)}`
   });
 
   document.querySelector('#createBtn').addEventListener('click', () => renderRoleGate('create'));
@@ -494,11 +540,14 @@ function renderLanding() {
   document.querySelector('#resetAllBtn')?.addEventListener('click', resetAllBoothsFlow);
 }
 
+// Returns markup, not plain text — it carries drawn icons — so the city
+// name (which comes back from a third-party geocoding API) is escaped here
+// rather than trusted.
 function cityPreviewText() {
   if (!state.myLocation) return '';
   const now = timeInZone(state.myLocation.timezone);
-  const clock = now ? ` — ${now.isNight ? '🌙' : '☀️'} ${now.label} local` : '';
-  return `📍 ${describeLocation(state.myLocation)}${clock}`;
+  const clock = now ? ` — ${now.isNight ? ICONS.moon : ICONS.sun} ${escapeHtml(now.label)} local` : '';
+  return `${ICONS.pin} ${escapeHtml(describeLocation(state.myLocation))}${clock}`;
 }
 
 // Debounced city search with a monotonically increasing token, so a slow
@@ -517,7 +566,9 @@ function wireCityPicker(onChange = () => {}) {
   };
 
   const refreshPreview = () => {
-    preview.textContent = cityPreviewText();
+    // innerHTML: the line carries a drawn pin and sun/moon icon. The city
+    // name is escaped inside cityPreviewText() before it gets here.
+    preview.innerHTML = cityPreviewText();
     preview.classList.toggle('hidden', !state.myLocation);
     onChange();
   };
@@ -599,7 +650,7 @@ function renderJoinByCode() {
     <main class="shell center-shell">
       <section class="card hero-card fade-in">
         <button class="ghost back-btn" id="backBtn">← Back</button>
-        <div class="heart-badge">♡</div>
+        <div class="heart-badge">${ICONS.heart}</div>
         <h1>Join a booth</h1>
         <p>Paste the room code or the full link Viktor sent you.</p>
         <input id="roomInput" class="text-input room-input" placeholder="Example: 8KJ2MXQ4P9VA" autofocus />
@@ -633,7 +684,7 @@ function renderRoleGate(mode) {
     <main class="shell center-shell">
       <section class="card hero-card fade-in">
         <button class="ghost back-btn" id="backBtn">← Back</button>
-        <div class="heart-badge">♡</div>
+        <div class="heart-badge">${ICONS.heart}</div>
         <h1>${isCreate ? 'Who is creating the booth?' : 'Who are you?'}</h1>
         <p>${isCreate ? 'Pick your side first. The other person can join from the link.' : `Room code: <strong>${escapeHtml(state.roomId)}</strong>`}</p>
         <div class="role-grid">
@@ -681,7 +732,7 @@ function renderLocationGate(mode) {
     <main class="shell center-shell">
       <section class="card hero-card fade-in">
         <button class="ghost back-btn" id="backBtn">← Back</button>
-        <div class="heart-badge">📍</div>
+        <div class="heart-badge">${ICONS.pin}</div>
         <h1>Where are you right now?</h1>
         <p>We use this to show each other's local time and how far apart you are.</p>
 
@@ -804,7 +855,7 @@ function renderRoomShell() {
           <p>You are connected as <strong>${roleName}</strong>.</p>
           <p id="anniversaryLine" class="anniversary-line hidden"></p>
           <div id="distancePanel" class="distance-panel hidden"></div>
-          <button type="button" class="secondary small" id="notifyToggleBtn">🔔 Enable notifications</button>
+          <button type="button" class="secondary small" id="notifyToggleBtn">${ICONS.bell} Enable notifications</button>
 
           <div class="share-box">
             <label class="field-label">Invite ${escapeHtml(ROLES[otherRole(state.role)]?.name || 'your partner')}</label>
@@ -836,7 +887,7 @@ function renderRoomShell() {
                   `<button type="button" class="timer-option${seconds === state.timerSeconds ? ' active' : ''}" data-seconds="${seconds}">${seconds}s</button>`
               ).join('')}
             </div>
-            <button type="button" class="timer-option ghost-toggle hidden" id="onionToggleBtn" title="Show your previous photo faintly over the camera" aria-pressed="false">👻</button>
+            <button type="button" class="timer-option ghost-toggle hidden" id="onionToggleBtn" title="Show your previous photo faintly over the camera" aria-pressed="false">${ICONS.ghost}</button>
           </div>
 
           <div id="previewPanel" class="preview-panel hidden">
@@ -860,7 +911,7 @@ function renderRoomShell() {
 
           <div id="cameraActions" class="action-row camera-actions">
             <button class="primary" id="takePhotoBtn">Take photo</button>
-            <button class="secondary" id="syncBtn">📸 Shoot together</button>
+            <button class="secondary" id="syncBtn">${ICONS.camera} Shoot together</button>
             <button class="secondary" id="switchCameraBtn">Switch camera</button>
             <button class="ghost hidden" id="cancelReplaceBtn">Cancel retake</button>
           </div>
@@ -1114,11 +1165,11 @@ function buildThumbRow(role) {
       // Firestore rules, which only allow the owning role's uid to write
       // to that photo doc.
       const editButton = role === state.role
-        ? `<button type="button" class="thumb-edit-btn" data-role="${role}" data-index="${index}" title="Edit caption" aria-label="Edit caption for photo ${index}">✎</button>`
+        ? `<button type="button" class="thumb-edit-btn" data-role="${role}" data-index="${index}" title="Edit caption" aria-label="Edit caption for photo ${index}">${ICONS.pencil}</button>`
         : '';
 
       const retakeButton = role === state.role
-        ? `<button type="button" class="thumb-retake-btn" data-index="${index}" title="Retake this photo" aria-label="Retake photo ${index}">⟳</button>`
+        ? `<button type="button" class="thumb-retake-btn" data-index="${index}" title="Retake this photo" aria-label="Retake photo ${index}">${ICONS.refresh}</button>`
         : '';
 
       // Anyone can react to any photo — reacting is the viewer's own
@@ -1128,7 +1179,7 @@ function buildThumbRow(role) {
       const myReacted = Boolean(photo.reactions?.[state.role]);
 
       const partnerBadge = partnerReacted
-        ? `<span class="thumb-partner-heart" title="${escapeAttr(ROLES[partnerRole].name)} loves this photo">♥</span>`
+        ? `<span class="thumb-partner-heart" title="${escapeAttr(ROLES[partnerRole].name)} loves this photo">${ICONS.heartFilled}</span>`
         : '';
       const reactionButton = `<button
         type="button"
@@ -1137,7 +1188,7 @@ function buildThumbRow(role) {
         data-index="${index}"
         title="${myReacted ? 'Remove reaction' : 'Like this photo'}"
         aria-label="${myReacted ? 'Remove reaction from photo' : 'Like photo'} ${index}"
-      >${myReacted ? '♥' : '♡'}</button>`;
+      >${myReacted ? ICONS.heartFilled : ICONS.heart}</button>`;
 
       const replacing = role === state.role && state.replacingIndex === index;
 
@@ -1178,8 +1229,8 @@ function renderDistancePanel() {
 
     panel.innerHTML = `
       <div class="distance-single">
-        <span class="distance-city">📍 ${escapeHtml(describeLocation(known))}</span>
-        ${clock ? `<span class="distance-clock">${clock.isNight ? '🌙' : '☀️'} ${escapeHtml(clock.label)}</span>` : ''}
+        <span class="distance-city">${ICONS.pin} ${escapeHtml(describeLocation(known))}</span>
+        ${clock ? `<span class="distance-clock">${clock.isNight ? ICONS.moon : ICONS.sun} ${escapeHtml(clock.label)}</span>` : ''}
         ${weatherChip(knownRole)}
       </div>
       <p class="distance-hint">${escapeHtml(
@@ -1211,7 +1262,7 @@ function renderDistancePanel() {
 
   const dot = (role, clock) => `
     <div class="distance-side">
-      <span class="distance-dot distance-dot-${role}">${clock?.isNight ? '🌙' : '☀️'}</span>
+      <span class="distance-dot distance-dot-${role}">${clock?.isNight ? ICONS.moon : ICONS.sun}</span>
       <strong class="distance-time">${clock ? escapeHtml(clock.label) : '--:--'}</strong>
       ${weatherChip(role)}
       <span class="distance-city">${escapeHtml(describeLocation(role === myRole ? mine : theirs))}</span>
@@ -1252,7 +1303,7 @@ function renderDistancePanel() {
 function weatherChip(role) {
   const weather = state.weather[role];
   if (!weather) return '';
-  return `<span class="distance-weather" title="${escapeAttr(weather.label)}">${weather.icon} ${escapeHtml(String(weather.temperature))}°</span>`;
+  return `<span class="distance-weather" title="${escapeAttr(weather.label)}">${weatherIcon(weather.code)} ${escapeHtml(String(weather.temperature))}°</span>`;
 }
 
 // Signature of both stored cities. Weather only needs re-fetching when this
@@ -1330,9 +1381,9 @@ function updateRoomView() {
 
     if (days && !state.dayCountIntroDone) {
       state.dayCountIntroDone = true;
-      countUp(anniversaryLine, days, { format: (value) => `💕 Together for ${formatDays(value)}` });
+      countUp(anniversaryLine, days, { format: (value) => `${ICONS.hearts} Together for ${formatDays(value)}` });
     } else {
-      anniversaryLine.textContent = togetherLine(state.room.anniversaryDate || ANNIVERSARY_DATE);
+      anniversaryLine.innerHTML = togetherLine(state.room.anniversaryDate || ANNIVERSARY_DATE);
     }
   }
 
@@ -1632,13 +1683,13 @@ function updateNotifyToggleButton() {
   }
 
   if (Notification.permission === 'granted') {
-    button.textContent = '🔔 Notifications on';
+    button.innerHTML = `${ICONS.bell} Notifications on`;
     button.disabled = true;
   } else if (Notification.permission === 'denied') {
-    button.textContent = '🔕 Notifications blocked in browser';
+    button.innerHTML = `${ICONS.bellOff} Notifications blocked`;
     button.disabled = true;
   } else {
-    button.textContent = '🔔 Enable notifications';
+    button.innerHTML = `${ICONS.bell} Enable notifications`;
     button.disabled = false;
   }
 }
@@ -1717,7 +1768,7 @@ function countUp(element, to, { duration = 1100, format = (v) => String(v) } = {
   if (!element) return;
 
   if (prefersReducedMotion() || !Number.isFinite(to)) {
-    element.textContent = format(to);
+    element.innerHTML = format(to);
     return;
   }
 
@@ -1728,7 +1779,10 @@ function countUp(element, to, { duration = 1100, format = (v) => String(v) } = {
     const progress = Math.min(1, (now - start) / duration);
     // Cubic ease-out: fast to begin with, settling onto the final value.
     const eased = 1 - Math.pow(1 - progress, 3);
-    element.textContent = format(Math.round(eased * to));
+    // innerHTML rather than textContent because these labels carry an
+    // inline icon. Every formatter here is defined in this file and only
+    // ever interpolates numbers, so nothing user-supplied reaches it.
+    element.innerHTML = format(Math.round(eased * to));
     if (progress < 1) window.requestAnimationFrame(step);
   };
 
