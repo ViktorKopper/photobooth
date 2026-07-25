@@ -97,7 +97,11 @@ const state = {
   weather: { viktor: null, jericka: null },
   weatherKey: '',
   weatherTimer: null,
-  bothCompleteSeen: null
+  bothCompleteSeen: null,
+  // One-shot flags for intro flourishes, so the panels that re-render on a
+  // timer don't replay their entrance every tick.
+  distanceIntroDone: false,
+  dayCountIntroDone: false
 };
 
 function readStoredLocation() {
@@ -178,8 +182,42 @@ async function pruneExpiredRooms() {
   }
 }
 
+function prefersReducedMotion() {
+  return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+}
+
+// Swaps the screen, turning the outgoing one away like a page.
+//
+// The new markup has to land synchronously — every render function queries
+// its own elements the moment this returns — so the outgoing screen is
+// lifted into an absolutely-positioned ghost that animates away *on top of*
+// the new one, rather than delaying the swap.
 function setApp(html) {
+  const previous = app.firstElementChild;
+
+  if (!previous || prefersReducedMotion()) {
+    app.innerHTML = html;
+    return;
+  }
+
+  const ghost = document.createElement('div');
+  ghost.className = 'page-exit';
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.appendChild(previous);
+
+  // The ghost still holds a full copy of the old screen, ids and all.
+  // Stripping them guarantees a stray querySelector can never reach back
+  // into the screen that's on its way out.
+  ghost.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+
   app.innerHTML = html;
+  app.appendChild(ghost);
+
+  const remove = () => ghost.remove();
+  ghost.addEventListener('animationend', remove, { once: true });
+  // Safety net: if the animation never fires (backgrounded tab, for one),
+  // the ghost must not be left sitting over the live screen.
+  window.setTimeout(remove, 900);
 }
 
 function renderLoading(message) {
@@ -189,7 +227,9 @@ function renderLoading(message) {
         <div class="heart-badge">♡</div>
         <h1>Viktor & Jericka Photobooth</h1>
         <p>${message}</p>
-        <div class="loader" aria-label="Loading"></div>
+        <svg class="loader" viewBox="0 0 48 44" role="img" aria-label="Loading">
+          <path d="M24 40C13 32 5 25 5 16A10 10 0 0 1 24 11 10 10 0 0 1 43 16c0 9-8 16-19 24z" />
+        </svg>
       </section>
     </main>
   `);
@@ -402,7 +442,7 @@ function renderLanding() {
         <p class="eyebrow">private long-distance couple photobooth</p>
         <h1>Viktor & Jericka Photobooth</h1>
         <p class="hero-text">Even far apart, we can still make memories together.</p>
-        <p class="anniversary-line">${escapeHtml(togetherLine())}</p>
+        <p class="anniversary-line" id="landingDays">${escapeHtml(togetherLine())}</p>
 
         <label class="field-label" for="messageInput">Collage message</label>
         <input id="messageInput" class="text-input" maxlength="80" value="${escapeAttr(state.customMessage)}" />
@@ -444,6 +484,10 @@ function renderLanding() {
   });
 
   wireCityPicker();
+
+  countUp(document.querySelector('#landingDays'), daysTogether(ANNIVERSARY_DATE), {
+    format: (value) => `💕 Together for ${formatDays(value)}`
+  });
 
   document.querySelector('#createBtn').addEventListener('click', () => renderRoleGate('create'));
   document.querySelector('#joinBtn').addEventListener('click', () => renderJoinByCode());
@@ -1175,11 +1219,17 @@ function renderDistancePanel() {
     </div>
   `;
 
+  // The flight path draws itself in, and the distance counts up — but only
+  // the first time the pair of cities appears. This panel is rewritten
+  // every 30 seconds by the clock ticker.
+  const isIntro = !state.distanceIntroDone;
+  state.distanceIntroDone = true;
+
   panel.innerHTML = `
     <div class="distance-visual">
       ${dot(myRole, myClock)}
       <div class="distance-arc">
-        <svg viewBox="0 0 120 48" aria-hidden="true">
+        <svg viewBox="0 0 120 48" aria-hidden="true" class="${isIntro ? 'arc-draw' : ''}">
           <path d="M6 40 Q60 -6 114 40" fill="none" stroke="rgba(199,52,90,0.45)" stroke-width="2" stroke-dasharray="5 4" />
           <circle cx="6" cy="40" r="4" fill="var(--viktor)" />
           <circle cx="114" cy="40" r="4" fill="var(--jericka)" />
@@ -1191,6 +1241,12 @@ function renderDistancePanel() {
     </div>
     <p class="distance-hint">${escapeHtml(`${ROLES[theirRole].name} is ${offsetLabel}${dayNote}`)}</p>
   `;
+
+  if (isIntro && km != null) {
+    countUp(panel.querySelector('.distance-km'), Math.round(km), {
+      format: (value) => formatDistanceKm(value)
+    });
+  }
 }
 
 function weatherChip(role) {
@@ -1269,9 +1325,15 @@ function updateRoomView() {
   if (anniversaryLine) {
     // Falls back to the constant so rooms created before the date was
     // fixed still show the count.
-    const line = togetherLine(state.room.anniversaryDate || ANNIVERSARY_DATE);
-    anniversaryLine.textContent = line;
-    anniversaryLine.classList.toggle('hidden', !line);
+    const days = daysTogether(state.room.anniversaryDate || ANNIVERSARY_DATE);
+    anniversaryLine.classList.toggle('hidden', !days);
+
+    if (days && !state.dayCountIntroDone) {
+      state.dayCountIntroDone = true;
+      countUp(anniversaryLine, days, { format: (value) => `💕 Together for ${formatDays(value)}` });
+    } else {
+      anniversaryLine.textContent = togetherLine(state.room.anniversaryDate || ANNIVERSARY_DATE);
+    }
   }
 
   maybeRefreshWeather();
@@ -1646,6 +1708,31 @@ async function confirmPhoto() {
     button.disabled = false;
     button.textContent = 'Confirm photo';
   }
+}
+
+// Ticks a number up to its final value. Deliberately opt-in per call site
+// rather than automatic: the panels holding these numbers re-render on a
+// timer, and a counter that replayed every 30 seconds would be maddening.
+function countUp(element, to, { duration = 1100, format = (v) => String(v) } = {}) {
+  if (!element) return;
+
+  if (prefersReducedMotion() || !Number.isFinite(to)) {
+    element.textContent = format(to);
+    return;
+  }
+
+  let start = null;
+
+  const step = (now) => {
+    if (start === null) start = now;
+    const progress = Math.min(1, (now - start) / duration);
+    // Cubic ease-out: fast to begin with, settling onto the final value.
+    const eased = 1 - Math.pow(1 - progress, 3);
+    element.textContent = format(Math.round(eased * to));
+    if (progress < 1) window.requestAnimationFrame(step);
+  };
+
+  window.requestAnimationFrame(step);
 }
 
 function restartAnimation(element) {
@@ -2043,6 +2130,8 @@ function stopSubscriptions() {
   state.weatherKey = '';
   state.weather = { viktor: null, jericka: null };
   state.bothCompleteSeen = null;
+  state.distanceIntroDone = false;
+  state.dayCountIntroDone = false;
 }
 
 // Backfills the room with this browser's stored city if the room doesn't

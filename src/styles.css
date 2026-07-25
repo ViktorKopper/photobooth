@@ -20,22 +20,57 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 
+  /* Type scale ---------------------------------------------------------
+     Six steps at roughly a 1.2 ratio. Before this there were ten
+     near-identical sizes between 0.68 and 0.92rem all doing the same job,
+     which is the sort of thing that makes an interface feel subtly wrong
+     without anyone being able to point at why. */
+  --fs-xs: 0.7rem;
+  --fs-sm: 0.82rem;
+  --fs-base: 1rem;
+  --fs-md: 1.15rem;
+  --fs-lg: 1.4rem;
+  --fs-h2: clamp(1.2rem, 2.6vw, 1.6rem);
+  --fs-h1: clamp(1.9rem, 5.5vw, 3rem);
+
   /* Palette ------------------------------------------------------------
      `paper` is the opaque surface memories sit on; `sage` is the one
      deliberately non-pink accent, there to stop the whole thing going
-     saccharine and to give the shared action its own identity. */
+     saccharine and to give the shared action its own identity.
+     Every surface is a token so the dark theme at the bottom of this file
+     can restate the whole palette without touching a single component. */
   --paper: #fff9f5;
+  --paper-raised: #ffffff;
   --paper-edge: rgba(122, 39, 64, 0.14);
-  --blush: #ffd9e4;
+  --note-bg: #fff2f6;
+  /* A polaroid frame is white card stock. It stays light even at night —
+     dimmed just enough not to glare, but never dark, or it stops reading
+     as a physical print. */
+  --print: #ffffff;
+  --field-bg: rgba(255, 255, 255, 0.82);
+  --slot-bg: rgba(255, 255, 255, 0.6);
+  --hover-bg: rgba(255, 224, 231, 0.7);
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-solid: rgba(255, 255, 255, 0.88);
+  --rule: rgba(157, 195, 230, 0.28);
+  --margin-rule: rgba(232, 93, 133, 0.35);
+  --stitch: rgba(232, 93, 133, 0.28);
+  --page: linear-gradient(140deg, #fdf6f2, #ffeef3 58%, #fffaf6);
+
   --sage: #a8bfa0;
   --sage-deep: #3f5638;
+  --sage-bg: rgba(168, 191, 160, 0.32);
+  --danger-text: #8e1f35;
+  --danger-edge: rgba(142, 31, 53, 0.28);
+  --focus-ring: rgba(217, 77, 114, 0.55);
   --bg: #fdf6f2;
-  --card: rgba(255, 255, 255, 0.78);
   --text: #4f2731;
-  --muted: #8b5a65;
+  /* Darkened from #8b5a65: the handwriting has thinner strokes than the
+     sans it replaced, so the old value was borderline at small sizes. */
+  --muted: #7d4e59;
   --rose: #d94d72;
   --rose-dark: #7a2740;
-  --cream: #fffdf8;
   --border: rgba(217, 77, 114, 0.18);
   --viktor: #3f7fb8;
   --viktor-dark: #2a5a86;
@@ -99,11 +134,11 @@ body {
     repeating-linear-gradient(
       to bottom,
       transparent 0 29px,
-      rgba(157, 195, 230, 0.28) 29px 30px
+      var(--rule) 29px 30px
     ),
     radial-gradient(circle at 20% 18%, rgba(255, 217, 228, 0.55), transparent 30%),
     radial-gradient(circle at 82% 8%, rgba(255, 233, 226, 0.7), transparent 32%),
-    linear-gradient(140deg, #fdf6f2, #ffeef3 58%, #fffaf6);
+    var(--page);
   background-attachment: fixed;
 }
 
@@ -117,7 +152,7 @@ body::before {
   left: max(28px, calc(50% - 560px));
   width: 2px;
   pointer-events: none;
-  background: rgba(232, 93, 133, 0.35);
+  background: var(--margin-rule);
   z-index: 0;
 }
 
@@ -146,7 +181,7 @@ button:disabled {
 button:focus-visible,
 .text-input:focus-visible,
 select:focus-visible {
-  outline: 3px solid rgba(217, 77, 114, 0.55);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -203,7 +238,7 @@ select:focus-visible {
   position: absolute;
   inset: 7px;
   pointer-events: none;
-  border: 1.5px dashed rgba(232, 93, 133, 0.28);
+  border: 1.5px dashed var(--stitch);
   border-radius: calc(var(--r-lg) - 7px);
 }
 
@@ -280,7 +315,7 @@ select:focus-visible {
   /* Marker is already emphatic; uppercase on top of it reads as shouting,
      and the letterspacing that suited Inter breaks its rhythm. */
   letter-spacing: 0.02em;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   font-weight: 400;
   opacity: 0.8;
 }
@@ -296,11 +331,11 @@ h2 {
 h1 {
   /* Capped well below the old 4.8rem — marker at that size overwhelms
      everything near it. */
-  font-size: clamp(1.9rem, 5.5vw, 3rem);
+  font-size: var(--fs-h1);
 }
 
 h2 {
-  font-size: clamp(1.2rem, 2.6vw, 1.6rem);
+  font-size: var(--fs-h2);
 }
 
 p {
@@ -309,7 +344,7 @@ p {
 }
 
 .hero-text {
-  font-size: 1.08rem;
+  font-size: var(--fs-md);
   margin-bottom: 28px;
 }
 
@@ -317,7 +352,7 @@ p {
   margin: 10px 0 0;
   color: var(--rose-dark);
   font-weight: 800;
-  font-size: 0.92rem;
+  font-size: var(--fs-sm);
 }
 
 #notifyToggleBtn {
@@ -337,7 +372,7 @@ p {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
-  background: white;
+  background: var(--paper-raised);
   box-shadow: var(--elev-3);
   animation: dropIn var(--dur-slow) var(--ease-soft) both;
 }
@@ -361,11 +396,11 @@ p {
   text-align: left;
   background: transparent;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 .city-result:hover {
-  background: rgba(255, 224, 231, 0.7);
+  background: var(--hover-bg);
 }
 
 .city-result-empty {
@@ -395,19 +430,19 @@ p {
 }
 
 .distance-dot {
-  font-size: 1.1rem;
+  font-size: var(--fs-md);
 }
 
 .distance-time {
   color: var(--text);
-  font-size: 1.15rem;
+  font-size: var(--fs-md);
   line-height: 1.1;
 }
 
 .distance-city,
 .distance-who {
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   line-height: 1.25;
 }
 
@@ -432,7 +467,7 @@ p {
   margin-top: -6px;
   color: var(--rose-dark);
   font-weight: 800;
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   white-space: nowrap;
 }
 
@@ -445,7 +480,7 @@ p {
 }
 
 .distance-single .distance-city {
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
   color: var(--text);
   font-weight: 700;
 }
@@ -457,7 +492,7 @@ p {
 
 .distance-weather {
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: var(--fs-xs);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -466,7 +501,7 @@ p {
   margin: 10px 0 0;
   text-align: center;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: var(--fs-xs);
 }
 
 .field-label {
@@ -474,7 +509,7 @@ p {
   margin: 16px 0 8px;
   color: var(--rose-dark);
   font-family: var(--font-marker);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 400;
   text-align: left;
 }
@@ -485,7 +520,7 @@ p {
   border-radius: var(--r-md);
   padding: 14px 16px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--field-bg);
   outline: none;
   transition: border-color var(--dur-base) var(--ease-soft),
     box-shadow var(--dur-base) var(--ease-soft);
@@ -510,7 +545,7 @@ p {
   text-align: center;
   letter-spacing: 0.12em;
   font-weight: 800;
-  font-size: 0.95rem;
+  font-size: var(--fs-sm);
 }
 
 .action-row {
@@ -577,7 +612,7 @@ p {
 
 .secondary {
   color: var(--rose-dark);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--glass-solid);
   border: 1px solid var(--border);
 }
 
@@ -585,7 +620,7 @@ p {
    than being a fourth pink pill among pink pills. */
 #syncBtn {
   color: var(--sage-deep);
-  background: rgba(168, 191, 160, 0.32);
+  background: var(--sage-bg);
   border-color: rgba(63, 86, 56, 0.24);
 }
 
@@ -599,9 +634,9 @@ p {
 }
 
 .danger {
-  color: #8e1f35;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(142, 31, 53, 0.28);
+  color: var(--danger-text);
+  background: var(--glass-solid);
+  border: 1px solid var(--danger-edge);
 }
 
 .wide {
@@ -630,7 +665,7 @@ p {
   min-height: 170px;
   padding: 24px;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--glass-solid);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   box-shadow: var(--elev-1);
@@ -719,7 +754,10 @@ p {
   padding: 20px 14px 18px;
   border: 1px solid var(--border);
   border-radius: var(--r-md) var(--r-md) 0 0;
-  background: white;
+  /* Stays white in every theme. The QR image itself is dark-on-light, and
+     scanners need that contrast — a dark panel behind it would make the
+     code unreadable at exactly the moment it matters. */
+  background: #ffffff;
   box-shadow: var(--elev-1);
 }
 
@@ -762,7 +800,7 @@ p {
   margin: 0;
   color: var(--muted);
   font-family: var(--font-ui);
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   font-weight: 800;
   letter-spacing: 0.12em;
 }
@@ -828,7 +866,7 @@ p {
   border-radius: var(--r-sm);
   font-weight: 800;
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--slot-bg);
   border: 1px dashed var(--border);
   /* Each slot carries its own tilt. It lives in a custom property because
      popIn animates transform too — the keyframes below fold the same
@@ -859,9 +897,9 @@ p {
   place-items: center;
   border-radius: var(--r-pill);
   color: var(--rose-dark);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--glass-solid);
   box-shadow: var(--elev-1);
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   line-height: 1;
   transition: transform var(--dur-slow) var(--ease-spring);
 }
@@ -885,9 +923,9 @@ p {
   place-items: center;
   border-radius: var(--r-pill);
   color: var(--rose-dark);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--glass-solid);
   box-shadow: var(--elev-1);
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
   line-height: 1;
   transition: transform var(--dur-slow) var(--ease-spring);
 }
@@ -915,9 +953,9 @@ p {
   place-items: center;
   border-radius: var(--r-pill);
   color: var(--rose-dark);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--glass-solid);
   box-shadow: var(--elev-1);
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   line-height: 1;
   transition: transform var(--dur-slow) var(--ease-spring),
     background var(--dur-base) var(--ease-soft),
@@ -962,7 +1000,7 @@ p {
   border-radius: var(--r-pill);
   color: white;
   background: rgba(199, 52, 90, 0.88);
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   box-shadow: var(--elev-1);
   animation: popIn var(--dur-slow) var(--ease-spring) both;
 }
@@ -981,7 +1019,11 @@ p {
 
 .caption-editor-card {
   width: min(360px, 100%);
-  background: white;
+  /* Light in both themes, like the preview it mirrors. The caption ink is
+     applied inline per partner (a dark blue or a dark rose), so the
+     surface underneath it has to stay light or the text vanishes at
+     night. */
+  background: var(--print);
   border-radius: var(--r-lg);
   padding: 16px 16px 20px;
   box-shadow: var(--elev-3);
@@ -1079,7 +1121,7 @@ p {
   border: 1px solid var(--border);
   border-radius: var(--r-md) var(--r-md) 0 0;
   color: var(--rose-dark);
-  background: #fff2f6;
+  background: var(--note-bg);
   line-height: 1.5;
 }
 
@@ -1090,7 +1132,7 @@ p {
   right: 0;
   bottom: -11px;
   height: 12px;
-  background: radial-gradient(circle at 8px 0, #fff2f6 7.5px, transparent 8px) repeat-x;
+  background: radial-gradient(circle at 8px 0, var(--note-bg) 7.5px, transparent 8px) repeat-x;
   background-size: 16px 12px;
 }
 
@@ -1150,10 +1192,10 @@ p {
   margin-top: 14px;
   padding: 8px;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--glass);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--glass-edge);
   box-shadow: var(--elev-1);
 }
 
@@ -1170,7 +1212,7 @@ p {
   gap: 4px;
   padding: 3px;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--glass);
   border: 1px solid var(--border);
 }
 
@@ -1179,7 +1221,7 @@ p {
   border-radius: var(--r-pill);
   color: var(--rose-dark);
   background: transparent;
-  font-size: 0.78rem;
+  font-size: var(--fs-xs);
   font-weight: 800;
   transition: background var(--dur-base) var(--ease-soft),
     color var(--dur-base) var(--ease-soft),
@@ -1204,9 +1246,9 @@ p {
   place-items: center;
   border-radius: var(--r-pill);
   color: var(--rose-dark);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--glass);
   border: 2px solid var(--border);
-  font-size: 0.68rem;
+  font-size: var(--fs-xs);
   font-weight: 800;
   transition: border-color var(--dur-base) var(--ease-soft),
     box-shadow var(--dur-base) var(--ease-soft),
@@ -1247,7 +1289,7 @@ p {
 .ghost-toggle {
   flex: 0 0 auto;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--glass);
 }
 
 .ghost-toggle.active {
@@ -1292,7 +1334,7 @@ p {
   position: relative;
   display: inline-block;
   width: min(420px, 100%);
-  background: white;
+  background: var(--print);
   border-radius: var(--r-lg);
   padding: 12px 12px 0;
   box-shadow: var(--elev-3);
@@ -1347,14 +1389,14 @@ p {
   background: transparent;
   text-align: center;
   font-family: "Permanent Marker", cursive;
-  font-size: 1.4rem;
+  font-size: var(--fs-lg);
   color: var(--text);
 }
 
 .caption-input::placeholder {
   color: rgba(139, 90, 101, 0.5);
   font-family: var(--font-hand);
-  font-size: 1rem;
+  font-size: var(--fs-base);
   font-weight: 500;
 }
 
@@ -1387,11 +1429,11 @@ p {
   padding: 8px 14px;
   border-radius: var(--r-pill);
   color: var(--rose-dark);
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--glass);
   border: 1px solid var(--border);
   font-family: var(--font-marker);
   font-weight: 400;
-  font-size: 0.8rem;
+  font-size: var(--fs-sm);
   transition: transform var(--dur-slow) var(--ease-spring),
     box-shadow var(--dur-base) var(--ease-soft),
     background var(--dur-base) var(--ease-soft),
@@ -1424,7 +1466,7 @@ p {
   text-align: center;
   color: var(--rose-dark);
   font-weight: 800;
-  font-size: 0.88rem;
+  font-size: var(--fs-sm);
   animation: fadeIn var(--dur-base) var(--ease-soft) both;
 }
 
@@ -1448,7 +1490,7 @@ p {
 .shared-collage-meta {
   margin: 12px 0 0;
   color: var(--muted);
-  font-size: 0.86rem;
+  font-size: var(--fs-sm);
 }
 
 .shared-collage-download {
@@ -1458,7 +1500,7 @@ p {
   padding: 13px 20px;
   border-radius: var(--r-pill);
   color: var(--rose-dark);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--glass-solid);
   border: 1px solid var(--border);
   font-weight: 850;
   text-decoration: none;
@@ -1474,7 +1516,7 @@ p {
 .danger-zone-label {
   margin: 0 0 4px;
   color: #8e1f35;
-  font-size: 0.72rem;
+  font-size: var(--fs-xs);
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -1482,7 +1524,7 @@ p {
 
 .danger-zone-hint {
   margin: 0 0 14px;
-  font-size: 0.86rem;
+  font-size: var(--fs-sm);
 }
 
 .collage-header {
@@ -1511,14 +1553,88 @@ p {
   animation: printOut var(--dur-lazy) var(--ease-spring) both;
 }
 
+/* A heart drawing itself, over and over, instead of a generic spinner —
+   the last piece of chrome that still looked like it came from a
+   different app. */
 .loader {
-  width: 46px;
-  height: 46px;
+  display: block;
+  width: 52px;
+  height: 48px;
   margin: 26px auto 0;
-  border: 4px solid rgba(217, 77, 114, 0.16);
-  border-top-color: var(--rose);
-  border-radius: var(--r-pill);
-  animation: spin 900ms linear infinite;
+  overflow: visible;
+}
+
+.loader path {
+  fill: none;
+  stroke: var(--rose);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 132;
+  animation: drawLoop 1.9s var(--ease-soft) infinite;
+}
+
+@keyframes drawLoop {
+  0% {
+    stroke-dashoffset: 132;
+    opacity: 0.35;
+  }
+  55% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  85%,
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* The flight path draws itself in on first appearance.
+   A left-to-right wipe rather than the usual stroke-dashoffset trick: this
+   path is *already* dashed, and animating its offset would set the dashes
+   marching along the curve instead of extending it. The wipe reveals the
+   dashes progressively and picks up each city marker as it passes. */
+.arc-draw {
+  animation: wipeArc var(--dur-lazy) var(--ease-soft) both;
+}
+
+@keyframes wipeArc {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* Screen transitions. The outgoing screen is lifted out of the flow and
+   turned away from the spine, so leaving one screen reads as turning a page
+   rather than the content simply being replaced. The incoming screen is
+   already underneath, running its own stagger. */
+#app {
+  position: relative;
+  perspective: 1400px;
+}
+
+.page-exit {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  transform-origin: left center;
+  animation: pageTurn 560ms var(--ease-soft) forwards;
+}
+
+@keyframes pageTurn {
+  from {
+    transform: rotateY(0deg) translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: rotateY(-24deg) translateX(-7%);
+    opacity: 0;
+  }
 }
 
 .hidden {
@@ -1611,9 +1727,13 @@ p {
   }
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+@keyframes loaderPulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
@@ -1629,6 +1749,96 @@ p {
   100% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+/* NIGHT ----------------------------------------------------------------
+   A booth used across timezones is used at odd hours by definition — one
+   of you is often awake in the dark while the other has daylight. The whole
+   theme is a restatement of the tokens above: no component below this point
+   knows the theme exists.
+
+   The metaphor holds rather than inverting: this is the same notebook seen
+   under a lamp, so the paper goes warm charcoal rather than pure black, and
+   the ruled lines dim instead of glowing. Two things deliberately stay
+   light — the polaroid frame (a print is white card in any light) and the
+   QR panel (scanners need the contrast). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #f6e8ec;
+    background: #211a1d;
+
+    --paper: #2e2329;
+    --paper-raised: #382a31;
+    --paper-edge: rgba(255, 214, 228, 0.16);
+    --note-bg: #3a2b33;
+    --print: #f2e8ea;
+    --field-bg: rgba(255, 255, 255, 0.07);
+    --slot-bg: rgba(255, 255, 255, 0.06);
+    --hover-bg: rgba(244, 166, 192, 0.16);
+    --glass: rgba(255, 255, 255, 0.09);
+    --glass-edge: rgba(255, 255, 255, 0.16);
+    --glass-solid: rgba(255, 255, 255, 0.12);
+    --rule: rgba(157, 195, 230, 0.13);
+    --margin-rule: rgba(232, 93, 133, 0.3);
+    --stitch: rgba(244, 166, 192, 0.26);
+    --page: linear-gradient(140deg, #211a1d, #2b1f26 58%, #1e1719);
+
+    --bg: #211a1d;
+    --text: #f6e8ec;
+    --muted: #c8a6b1;
+    /* Carries headings, labels and secondary button text, so it has to
+       flip to the light end of the rose ramp or half the interface
+       disappears. */
+    --rose-dark: #f4a6c0;
+    --rose: #f07a9f;
+    --border: rgba(244, 166, 192, 0.22);
+
+    --sage: #b6cbae;
+    --sage-deep: #d3e3cb;
+    --sage-bg: rgba(168, 191, 160, 0.2);
+    --danger-text: #ff9db0;
+    --danger-edge: rgba(255, 157, 176, 0.3);
+    --focus-ring: rgba(244, 166, 192, 0.7);
+
+    /* Shadows do almost nothing on a dark ground; separation has to come
+       from the surface tints above, so these are pulled right back. */
+    --elev-1: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --elev-2: 0 8px 24px rgba(0, 0, 0, 0.38);
+    --elev-3: 0 24px 60px rgba(0, 0, 0, 0.5);
+    --elev-rose: 0 10px 26px rgba(184, 36, 73, 0.4);
+
+    --viktor: #7cb0e0;
+    --jericka: #f28aaa;
+  }
+
+  /* Both print surfaces stay light, so everything sitting on them keeps
+     its daytime colours rather than inheriting the night palette. */
+  .caption-input::placeholder {
+    color: rgba(79, 39, 49, 0.45);
+  }
+
+  .caption-editor-card .secondary {
+    color: #7a2740;
+    background: rgba(255, 255, 255, 0.85);
+    border-color: rgba(217, 77, 114, 0.28);
+  }
+
+  .caption-input:focus {
+    border-bottom-color: rgba(217, 77, 114, 0.35);
+  }
+
+  .qr-code-text {
+    color: #7d4e59;
+  }
+
+  /* Grain reads as light specks on a dark surface rather than dark ones. */
+  .card::after {
+    background-image: radial-gradient(rgba(255, 226, 235, 0.1) 0.5px, transparent 0.5px);
+  }
+
+  .camera-wrap {
+    background: #171013;
   }
 }
 
@@ -1650,8 +1860,23 @@ p {
     animation: none !important;
   }
 
-  .loader {
-    animation: spin 900ms linear infinite !important;
+  /* The loader must keep moving or loading looks stalled — but it pulses
+     in place rather than redrawing itself. */
+  .loader path {
+    animation: loaderPulse 1.4s ease-in-out infinite !important;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+
+  /* A page turn is the one transition worth dropping entirely; the new
+     screen is already in place underneath it. */
+  .page-exit {
+    display: none;
+  }
+
+  .arc-draw {
+    animation: none;
+    clip-path: none;
   }
 
   .primary:hover,
