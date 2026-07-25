@@ -13,11 +13,43 @@
   --rose-dark: #9b2948;
   --cream: #fffdf8;
   --border: rgba(217, 77, 114, 0.18);
-  --shadow: 0 28px 80px rgba(130, 52, 74, 0.18);
   --viktor: #3f7fb8;
   --viktor-dark: #2a5a86;
   --jericka: #c7345a;
   --jericka-dark: #9b2948;
+
+  /* Motion ------------------------------------------------------------
+     Two curves, used deliberately. `soft` is a strong deceleration for
+     anything that moves a surface around — it should feel settled, not
+     bouncy. `spring` overshoots slightly and belongs on things that
+     should feel alive: a photo landing, a heart being tapped, a button
+     under a finger. Mixing them up is what makes an interface feel
+     either sluggish or twitchy. */
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --dur-lazy: 600ms;
+
+  /* Elevation ---------------------------------------------------------
+     Three steps. Nested things barely lift, cards sit above the page,
+     and only genuinely floating layers (dropdowns, modals, the hero
+     card) get the deep shadow. Previously everything shared one very
+     heavy shadow, which left nothing looking more important than
+     anything else. */
+  --elev-1: 0 2px 8px rgba(130, 52, 74, 0.06);
+  --elev-2: 0 8px 24px rgba(130, 52, 74, 0.10);
+  --elev-3: 0 24px 60px rgba(130, 52, 74, 0.18);
+  --elev-rose: 0 10px 26px rgba(184, 36, 73, 0.26);
+
+  /* Radius ------------------------------------------------------------ */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 26px;
+  --r-pill: 999px;
 }
 
 * {
@@ -91,14 +123,17 @@ select:focus-visible {
   border: 1px solid var(--border);
   background: var(--card);
   backdrop-filter: blur(18px);
-  border-radius: 32px;
-  box-shadow: var(--shadow);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-2);
 }
 
+/* The hero card is the only thing on screen when it appears, so it earns
+   the top elevation step. In-room cards stay at level 2 beneath it. */
 .hero-card {
   width: min(680px, 100%);
   padding: clamp(28px, 6vw, 58px);
   text-align: center;
+  box-shadow: var(--elev-3);
 }
 
 .heart-badge {
@@ -108,10 +143,26 @@ select:focus-visible {
   place-items: center;
   margin: 0 auto 18px;
   color: white;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: linear-gradient(135deg, #f28aaa, #c7345a);
   box-shadow: 0 16px 38px rgba(199, 52, 90, 0.28);
   font: 44px Georgia, serif;
+  /* A slow idle beat. Small enough to read as "alive" rather than as an
+     animation demanding attention. */
+  animation: heartbeat 1.8s var(--ease-soft) infinite;
+}
+
+@keyframes heartbeat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  42% {
+    transform: scale(1.07);
+  }
+  58% {
+    transform: scale(1.02);
+  }
 }
 
 .error-badge {
@@ -176,9 +227,21 @@ p {
   right: 0;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--r-md);
   background: white;
-  box-shadow: 0 18px 40px rgba(130, 52, 74, 0.22);
+  box-shadow: var(--elev-3);
+  animation: dropIn var(--dur-slow) var(--ease-soft) both;
+}
+
+@keyframes dropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .city-result,
@@ -204,7 +267,7 @@ p {
   margin-top: 14px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: var(--r-md);
   background: rgba(255, 245, 248, 0.72);
 }
 
@@ -309,12 +372,13 @@ p {
 .text-input {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--r-md);
   padding: 14px 16px;
   color: var(--text);
   background: rgba(255, 255, 255, 0.82);
   outline: none;
-  transition: border 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  transition: border-color var(--dur-base) var(--ease-soft),
+    box-shadow var(--dur-base) var(--ease-soft);
 }
 
 .text-input:focus {
@@ -347,23 +411,51 @@ p {
 .ghost,
 .danger {
   min-height: 48px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 12px 20px;
   font-weight: 850;
-  transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+  transition: transform var(--dur-slow) var(--ease-spring),
+    box-shadow var(--dur-base) var(--ease-soft),
+    opacity var(--dur-base) var(--ease-soft);
 }
 
 .primary:hover,
 .secondary:hover,
 .ghost:hover,
 .danger:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+}
+
+/* Touch devices have no hover, so without this every button on a phone
+   gave no feedback at all. Snappier than the release so the press feels
+   immediate and the return feels springy. */
+.primary:active,
+.secondary:active,
+.ghost:active,
+.danger:active {
+  transform: scale(0.96);
+  transition-duration: var(--dur-fast);
+}
+
+.primary:disabled:hover,
+.secondary:disabled:hover,
+.ghost:disabled:hover,
+.danger:disabled:hover,
+.primary:disabled:active,
+.secondary:disabled:active,
+.ghost:disabled:active,
+.danger:disabled:active {
+  transform: none;
 }
 
 .primary {
   color: white;
   background: linear-gradient(135deg, #e85d85, #b82449);
-  box-shadow: 0 14px 32px rgba(184, 36, 73, 0.26);
+  box-shadow: var(--elev-rose);
+}
+
+.primary:hover {
+  box-shadow: 0 14px 32px rgba(184, 36, 73, 0.32);
 }
 
 .secondary {
@@ -411,8 +503,21 @@ p {
   color: var(--text);
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--border);
-  border-radius: 28px;
-  box-shadow: 0 12px 32px rgba(130, 52, 74, 0.08);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-1);
+  transition: transform var(--dur-slow) var(--ease-spring),
+    box-shadow var(--dur-base) var(--ease-soft),
+    border-color var(--dur-base) var(--ease-soft);
+}
+
+.role-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--elev-2);
+}
+
+.role-card:active {
+  transform: scale(0.98);
+  transition-duration: var(--dur-fast);
 }
 
 .role-card span {
@@ -421,7 +526,7 @@ p {
   display: grid;
   place-items: center;
   margin: 0 auto 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: white;
   background: linear-gradient(135deg, #f28aaa, #c7345a);
   font: 42px Georgia, serif;
@@ -482,15 +587,16 @@ p {
   gap: 6px;
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: var(--r-md);
   background: white;
+  box-shadow: var(--elev-1);
 }
 
 .qr-image {
   display: block;
   width: 150px;
   height: 150px;
-  border-radius: 10px;
+  border-radius: var(--r-xs);
 }
 
 .qr-code-text {
@@ -527,7 +633,7 @@ p {
 .meter {
   overflow: hidden;
   height: 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: rgba(217, 77, 114, 0.14);
 }
 
@@ -536,7 +642,7 @@ p {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #f28aaa, #c7345a);
-  transition: width 260ms ease;
+  transition: width var(--dur-lazy) var(--ease-soft);
 }
 
 .meter-viktor span {
@@ -559,7 +665,7 @@ p {
   aspect-ratio: 1;
   display: grid;
   place-items: center;
-  border-radius: 14px;
+  border-radius: var(--r-sm);
   overflow: hidden;
   font-weight: 800;
   color: var(--muted);
@@ -575,17 +681,22 @@ p {
   height: 22px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--rose-dark);
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 4px 10px rgba(130, 52, 74, 0.28);
+  box-shadow: var(--elev-1);
   font-size: 0.72rem;
   line-height: 1;
-  transition: transform 150ms ease;
+  transition: transform var(--dur-slow) var(--ease-spring);
 }
 
 .thumb-edit-btn:hover {
-  transform: scale(1.08);
+  transform: scale(1.12);
+}
+
+.thumb-edit-btn:active {
+  transform: scale(0.92);
+  transition-duration: var(--dur-fast);
 }
 
 .thumb-retake-btn {
@@ -596,17 +707,22 @@ p {
   height: 22px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--rose-dark);
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 4px 10px rgba(130, 52, 74, 0.28);
+  box-shadow: var(--elev-1);
   font-size: 0.78rem;
   line-height: 1;
-  transition: transform 150ms ease;
+  transition: transform var(--dur-slow) var(--ease-spring);
 }
 
 .thumb-retake-btn:hover {
-  transform: scale(1.08);
+  transform: scale(1.12) rotate(-25deg);
+}
+
+.thumb-retake-btn:active {
+  transform: scale(0.92);
+  transition-duration: var(--dur-fast);
 }
 
 .thumb-slot.replacing {
@@ -621,22 +737,42 @@ p {
   height: 24px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--rose-dark);
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 4px 10px rgba(130, 52, 74, 0.28);
+  box-shadow: var(--elev-1);
   font-size: 0.85rem;
   line-height: 1;
-  transition: transform 150ms ease, background 150ms ease, color 150ms ease;
+  transition: transform var(--dur-slow) var(--ease-spring),
+    background var(--dur-base) var(--ease-soft),
+    color var(--dur-base) var(--ease-soft);
 }
 
 .thumb-reaction-btn:hover {
-  transform: scale(1.12);
+  transform: scale(1.18);
+}
+
+.thumb-reaction-btn:active {
+  transform: scale(0.88);
+  transition-duration: var(--dur-fast);
 }
 
 .thumb-reaction-btn.reacted {
   color: white;
   background: linear-gradient(135deg, #e85d85, #b82449);
+  animation: heartPop var(--dur-slow) var(--ease-spring);
+}
+
+@keyframes heartPop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .thumb-partner-heart {
@@ -647,12 +783,12 @@ p {
   place-items: center;
   width: 20px;
   height: 20px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: white;
   background: rgba(199, 52, 90, 0.88);
   font-size: 0.68rem;
-  box-shadow: 0 4px 10px rgba(130, 52, 74, 0.28);
-  animation: popIn 320ms ease both;
+  box-shadow: var(--elev-1);
+  animation: popIn var(--dur-slow) var(--ease-spring) both;
 }
 
 .caption-editor-overlay {
@@ -664,28 +800,41 @@ p {
   padding: 20px;
   background: rgba(79, 39, 49, 0.45);
   backdrop-filter: blur(4px);
+  animation: fadeIn var(--dur-base) var(--ease-soft) both;
 }
 
 .caption-editor-card {
   width: min(360px, 100%);
   background: white;
-  border-radius: 26px;
+  border-radius: var(--r-lg);
   padding: 16px 16px 20px;
-  box-shadow: 0 24px 60px rgba(88, 40, 50, 0.35);
+  box-shadow: var(--elev-3);
   text-align: center;
+  animation: modalIn var(--dur-slow) var(--ease-spring) both;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .caption-editor-card img {
   display: block;
   width: 100%;
-  border-radius: 16px;
+  border-radius: var(--r-sm);
   margin-bottom: 4px;
 }
 
 .thumb-slot.filled {
   border-style: solid;
   border-color: transparent;
-  animation: popIn 320ms ease both;
+  animation: popIn var(--dur-slow) var(--ease-spring) both;
 }
 
 .thumb-slot img {
@@ -718,7 +867,7 @@ p {
   margin-top: 18px;
   padding: 16px;
   border: 1px solid var(--border);
-  border-radius: 22px;
+  border-radius: var(--r-md);
   color: var(--rose-dark);
   background: rgba(255, 245, 248, 0.72);
   line-height: 1.55;
@@ -728,7 +877,7 @@ p {
   position: relative;
   overflow: hidden;
   aspect-ratio: 4 / 3;
-  border-radius: 30px;
+  border-radius: var(--r-lg);
   background: #2a1720;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
@@ -753,7 +902,7 @@ p {
   text-align: center;
   color: white;
   background: rgba(42, 23, 32, 0.72);
-  border-radius: 22px;
+  border-radius: var(--r-md);
 }
 
 .countdown {
@@ -789,19 +938,26 @@ p {
   flex: 0 0 auto;
   gap: 4px;
   padding: 3px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid var(--border);
 }
 
 .timer-option {
   padding: 7px 11px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--rose-dark);
   background: transparent;
   font-size: 0.78rem;
   font-weight: 800;
-  transition: background 160ms ease, color 160ms ease;
+  transition: background var(--dur-base) var(--ease-soft),
+    color var(--dur-base) var(--ease-soft),
+    transform var(--dur-slow) var(--ease-spring);
+}
+
+.timer-option:active {
+  transform: scale(0.93);
+  transition-duration: var(--dur-fast);
 }
 
 .timer-option.active {
@@ -815,17 +971,24 @@ p {
   height: 44px;
   display: grid;
   place-items: center;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--rose-dark);
   background: rgba(255, 255, 255, 0.7);
   border: 2px solid var(--border);
   font-size: 0.68rem;
   font-weight: 800;
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  transition: border-color var(--dur-base) var(--ease-soft),
+    box-shadow var(--dur-base) var(--ease-soft),
+    transform var(--dur-slow) var(--ease-spring);
 }
 
 .filter-swatch:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px) scale(1.04);
+}
+
+.filter-swatch:active {
+  transform: scale(0.93);
+  transition-duration: var(--dur-fast);
 }
 
 .filter-swatch.active {
@@ -870,6 +1033,9 @@ p {
   opacity: 0;
 }
 
+/* Deliberately not tokenised: this 260ms is locked to the matching
+   sleep(260) in the capture flow, so the flash finishes exactly as the
+   frame is grabbed. Changing one without the other desyncs them. */
 .shutter-flash.flashing {
   animation: shutterFlash 260ms ease-out;
 }
@@ -895,15 +1061,28 @@ p {
   display: inline-block;
   width: min(420px, 100%);
   background: white;
-  border-radius: 26px;
+  border-radius: var(--r-lg);
   padding: 12px 12px 0;
-  box-shadow: 0 18px 46px rgba(130, 52, 74, 0.18);
+  box-shadow: var(--elev-3);
+  /* The captured shot lands like a print dropping onto the table. */
+  animation: printOut var(--dur-lazy) var(--ease-spring) both;
+}
+
+@keyframes printOut {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.96) rotate(-1.5deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
 }
 
 .polaroid-preview img {
   display: block;
   width: 100%;
-  border-radius: 16px;
+  border-radius: var(--r-sm);
 }
 
 .caption-input {
@@ -952,23 +1131,31 @@ p {
 .segmented-option {
   min-height: 40px;
   padding: 8px 14px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--rose-dark);
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid var(--border);
   font-weight: 800;
   font-size: 0.86rem;
-  transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease, color 180ms ease;
+  transition: transform var(--dur-slow) var(--ease-spring),
+    box-shadow var(--dur-base) var(--ease-soft),
+    background var(--dur-base) var(--ease-soft),
+    color var(--dur-base) var(--ease-soft);
 }
 
 .segmented-option:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+}
+
+.segmented-option:active {
+  transform: scale(0.95);
+  transition-duration: var(--dur-fast);
 }
 
 .segmented-option.active {
   color: white;
   background: linear-gradient(135deg, #e85d85, #b82449);
-  box-shadow: 0 10px 24px rgba(184, 36, 73, 0.26);
+  box-shadow: var(--elev-rose);
   border-color: transparent;
 }
 
@@ -983,7 +1170,7 @@ p {
   color: var(--rose-dark);
   font-weight: 800;
   font-size: 0.88rem;
-  animation: fadeIn 220ms ease both;
+  animation: fadeIn var(--dur-base) var(--ease-soft) both;
 }
 
 .collage-card {
@@ -994,7 +1181,7 @@ p {
   margin-top: 26px;
   padding: 18px;
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: var(--r-lg);
   background: rgba(255, 245, 248, 0.72);
   text-align: center;
 }
@@ -1014,7 +1201,7 @@ p {
   margin-top: 12px;
   min-height: 48px;
   padding: 13px 20px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: var(--rose-dark);
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid var(--border);
@@ -1064,8 +1251,9 @@ p {
   display: block;
   width: min(420px, 100%);
   margin: 22px auto 0;
-  border-radius: 24px;
-  box-shadow: 0 18px 52px rgba(130, 52, 74, 0.22);
+  border-radius: var(--r-md);
+  box-shadow: var(--elev-3);
+  animation: printOut var(--dur-lazy) var(--ease-spring) both;
 }
 
 .loader {
@@ -1074,7 +1262,7 @@ p {
   margin: 26px auto 0;
   border: 4px solid rgba(217, 77, 114, 0.16);
   border-top-color: var(--rose);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   animation: spin 900ms linear infinite;
 }
 
@@ -1083,11 +1271,46 @@ p {
 }
 
 .fade-in {
-  animation: fadeIn 360ms ease both;
+  animation: fadeIn var(--dur-slow) var(--ease-soft) both;
+}
+
+/* Screen contents arrive in sequence rather than all at once. Each direct
+   child of a freshly rendered card is nudged a beat later than the last,
+   which reads as the interface assembling itself instead of appearing
+   fully formed. */
+.fade-in > * {
+  animation: riseIn var(--dur-slow) var(--ease-soft) both;
+}
+
+.fade-in > *:nth-child(1) { animation-delay: 40ms; }
+.fade-in > *:nth-child(2) { animation-delay: 80ms; }
+.fade-in > *:nth-child(3) { animation-delay: 120ms; }
+.fade-in > *:nth-child(4) { animation-delay: 160ms; }
+.fade-in > *:nth-child(5) { animation-delay: 200ms; }
+.fade-in > *:nth-child(n + 6) { animation-delay: 240ms; }
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The caption editor happens to be a direct child of the room shell, but
+   it's a modal — it opens on demand, long after the screen has settled.
+   Without this it would inherit the stagger's delay and sit invisible for
+   a beat every time it's opened. */
+.fade-in > .caption-editor-overlay {
+  animation: fadeIn var(--dur-base) var(--ease-soft) both;
+  animation-delay: 0s;
 }
 
 .countdown.pulse {
-  animation: countdownPulse 750ms ease;
+  animation: countdownPulse var(--dur-lazy) var(--ease-spring);
 }
 
 .confetti-canvas {
@@ -1105,20 +1328,21 @@ p {
   bottom: 28px;
   z-index: 20;
   padding: 12px 22px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: white;
   font-weight: 800;
   background: linear-gradient(135deg, #e85d85, #b82449);
   box-shadow: 0 16px 38px rgba(184, 36, 73, 0.32);
   opacity: 0;
   pointer-events: none;
-  transform: translate(-50%, 12px);
-  transition: opacity 220ms ease, transform 220ms ease;
+  transform: translate(-50%, 12px) scale(0.96);
+  transition: opacity var(--dur-base) var(--ease-soft),
+    transform var(--dur-slow) var(--ease-spring);
 }
 
 .toast-visible {
   opacity: 1;
-  transform: translate(-50%, 0);
+  transform: translate(-50%, 0) scale(1);
 }
 
 @keyframes fadeIn {
@@ -1153,6 +1377,39 @@ p {
   }
 }
 
+/* Honour the system-level request to cut motion. Transitions are reduced
+   to near-instant rather than removed outright, so state changes are still
+   perceivable — a control that snaps with no transition at all can be
+   harder to follow, not easier. Purely decorative loops stop completely. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .heart-badge {
+    animation: none !important;
+  }
+
+  .loader {
+    animation: spin 900ms linear infinite !important;
+  }
+
+  .primary:hover,
+  .secondary:hover,
+  .ghost:hover,
+  .danger:hover,
+  .role-card:hover,
+  .filter-swatch:hover,
+  .segmented-option:hover {
+    transform: none;
+  }
+}
+
 @media (max-width: 860px) {
   .shell {
     width: min(100% - 20px, 1180px);
@@ -1182,7 +1439,7 @@ p {
   .camera-card,
   .collage-card {
     padding: 20px;
-    border-radius: 24px;
+    border-radius: var(--r-md);
   }
 
   .action-row {

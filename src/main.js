@@ -1648,6 +1648,13 @@ async function confirmPhoto() {
   }
 }
 
+function restartAnimation(element) {
+  if (!element) return;
+  element.style.animation = 'none';
+  void element.offsetWidth;
+  element.style.animation = '';
+}
+
 function openCaptionEditor(role, index) {
   const photo = state.photos.find((item) => item.owner === role && item.index === index);
   if (!photo) return;
@@ -1662,6 +1669,14 @@ function openCaptionEditor(role, index) {
   input.value = photo.caption || '';
   input.style.color = role === 'viktor' ? '#2a5a86' : '#9b2948';
   overlay.classList.remove('hidden');
+
+  // The overlay is toggled with display:none, and a CSS animation won't
+  // replay on an element that was merely un-hidden. Nudging it off and on
+  // (with a forced reflow between) restarts the entry animation each time
+  // the editor opens, instead of only on first render.
+  restartAnimation(overlay);
+  restartAnimation(overlay.querySelector('.caption-editor-card'));
+
   input.focus();
 }
 
