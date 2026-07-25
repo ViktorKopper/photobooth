@@ -5,13 +5,16 @@ import { clearCollageImageCache, COLLAGE_THEMES, EXPORT_PRESETS, generateCollage
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
 import { describeLocation, describeSearchResult, fetchWeather, searchCities } from './geo.js';
 import { ICONS, weatherIcon } from './icons.js';
+import { celebrateCompletion, playShutterSound, triggerShutterFeedback } from './ui/feedback.js';
+import { countUp, prefersReducedMotion, restartAnimation } from './ui/motion.js';
+import { mountThemeToggle } from './ui/theme.js';
+import { showError, showToast } from './ui/toast.js';
 import {
   expiredRoomIds,
   forgetAllRooms,
   forgetRoom,
   listRooms,
-  rememberRoom,
-  ROOM_MAX_AGE_MS
+  rememberRoom
 } from './roomHistory.js';
 // room.js is imported on demand rather than up front. It pulls in the
 // Firestore and Storage SDKs — about two thirds of the whole bundle — none
@@ -139,49 +142,6 @@ registerServiceWorker();
 mountThemeToggle();
 bootstrap();
 
-// A day/night switch, mounted once to the body rather than into any screen
-// so it survives every re-render and page turn. The initial attribute is
-// set by an inline script in index.html, before first paint — this only
-// takes over once someone flips it by hand.
-function mountThemeToggle() {
-  if (document.querySelector('#themeToggle')) return;
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.id = 'themeToggle';
-  button.className = 'theme-toggle';
-  button.innerHTML = `
-    <span class="theme-toggle-icon theme-toggle-sun">${ICONS.sun}</span>
-    <span class="theme-toggle-icon theme-toggle-moon">${ICONS.moon}</span>
-    <span class="theme-toggle-knob"></span>
-  `;
-
-  const sync = () => {
-    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
-    button.setAttribute('aria-pressed', String(dark));
-    button.setAttribute('aria-label', dark ? 'Switch to day theme' : 'Switch to night theme');
-    button.title = dark ? 'Day' : 'Night';
-
-    // Keep the browser chrome and PWA status bar in step with the choice.
-    document
-      .querySelectorAll('meta[name="theme-color"]')
-      .forEach((meta) => meta.setAttribute('content', dark ? '#211a1d' : '#f8b6c8'));
-  };
-
-  button.addEventListener('click', () => {
-    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    try {
-      localStorage.setItem('photobooth-theme', next);
-    } catch {
-      // A saved preference is a nicety; the toggle still works without it.
-    }
-    sync();
-  });
-
-  document.body.appendChild(button);
-  sync();
-}
 
 // Registers the PWA service worker so the booth can be installed to a
 // phone's home screen and opened like a native app. Never blocks or
@@ -228,9 +188,6 @@ async function pruneExpiredRooms() {
   }
 }
 
-function prefersReducedMotion() {
-  return Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-}
 
 // Swaps the screen, turning the outgoing one away like a page.
 //
@@ -295,185 +252,11 @@ function renderFatalError(error) {
   document.querySelector('#restartBtn').addEventListener('click', () => window.location.href = window.location.pathname);
 }
 
-function showToast(message) {
-  let toast = document.querySelector('#toast');
-  if (!toast) {
-    toast = document.createElement('div');
-    toast.id = 'toast';
-    toast.className = 'toast';
-    toast.setAttribute('aria-live', 'polite');
-    document.body.appendChild(toast);
-  }
 
-  toast.textContent = message;
-  toast.classList.remove('toast-visible');
-  // Force reflow so retriggering the class restarts the animation
-  // even if a toast is already showing.
-  void toast.offsetWidth;
-  toast.classList.add('toast-visible');
 
-  window.clearTimeout(showToast.timer);
-  showToast.timer = window.setTimeout(() => {
-    toast.classList.remove('toast-visible');
-  }, 1800);
-}
 
-// The physical half of the shutter: a brief white flash over the preview
-// and a short haptic tap. Both are pure garnish — wrapped so an
-// unsupported or blocked API can never interrupt a capture.
-function triggerShutterFeedback() {
-  const flash = document.querySelector('#shutterFlash');
-  if (flash) {
-    flash.classList.remove('flashing');
-    // Force reflow so retriggering restarts the animation on rapid shots.
-    void flash.offsetWidth;
-    flash.classList.add('flashing');
-  }
 
-  try {
-    navigator.vibrate?.([30, 40, 20]);
-  } catch {
-    // Haptics are unavailable on desktop and blocked in some contexts.
-  }
-}
 
-let audioContext = null;
-
-// Fired once, the moment the sixth photo lands and the collage unlocks.
-// Hand-rolled rather than pulling in a confetti library for one animation.
-function celebrateCompletion() {
-  showToast('All six photos — your collage is ready ♡');
-  playCelebrationSound();
-
-  // Someone who has asked their system to reduce motion should not get a
-  // screenful of flying particles.
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-
-  const canvas = document.createElement('canvas');
-  canvas.className = 'confetti-canvas';
-  document.body.appendChild(canvas);
-
-  const ctx = canvas.getContext('2d');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
-  ctx.scale(dpr, dpr);
-
-  const colours = ['#e85d85', '#c7345a', '#f28aaa', '#3f7fb8', '#ffd9e6', '#b82449'];
-  const pieces = Array.from({ length: 90 }, () => ({
-    x: Math.random() * width,
-    y: -20 - Math.random() * height * 0.4,
-    size: 6 + Math.random() * 7,
-    vx: -1.2 + Math.random() * 2.4,
-    vy: 2.2 + Math.random() * 2.8,
-    spin: -0.2 + Math.random() * 0.4,
-    angle: Math.random() * Math.PI * 2,
-    colour: colours[Math.floor(Math.random() * colours.length)],
-    heart: Math.random() < 0.25
-  }));
-
-  const startedAt = performance.now();
-  const DURATION = 2800;
-
-  const frame = (now) => {
-    const elapsed = now - startedAt;
-    ctx.clearRect(0, 0, width, height);
-
-    // Fade the whole thing out over the final third rather than cutting.
-    ctx.globalAlpha = elapsed > DURATION * 0.66
-      ? Math.max(0, 1 - (elapsed - DURATION * 0.66) / (DURATION * 0.34))
-      : 1;
-
-    pieces.forEach((piece) => {
-      piece.x += piece.vx;
-      piece.y += piece.vy;
-      piece.angle += piece.spin;
-
-      ctx.save();
-      ctx.translate(piece.x, piece.y);
-      ctx.rotate(piece.angle);
-      ctx.fillStyle = piece.colour;
-
-      if (piece.heart) {
-        ctx.font = `${piece.size * 1.6}px Georgia, serif`;
-        ctx.textAlign = 'center';
-        ctx.fillText('♥', 0, 0);
-      } else {
-        ctx.fillRect(-piece.size / 2, -piece.size / 4, piece.size, piece.size / 2);
-      }
-
-      ctx.restore();
-    });
-
-    if (elapsed < DURATION) {
-      window.requestAnimationFrame(frame);
-    } else {
-      canvas.remove();
-    }
-  };
-
-  window.requestAnimationFrame(frame);
-}
-
-function playCelebrationSound() {
-  try {
-    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-    const now = audioContext.currentTime;
-
-    // A small rising arpeggio — reads as "done!" rather than as another
-    // shutter click.
-    [523.25, 659.25, 783.99, 1046.5].forEach((frequency, index) => {
-      const at = now + index * 0.11;
-      const osc = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(frequency, at);
-      gain.gain.setValueAtTime(0.0001, at);
-      gain.gain.exponentialRampToValueAtTime(0.08, at + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.42);
-      osc.connect(gain);
-      gain.connect(audioContext.destination);
-      osc.start(at);
-      osc.stop(at + 0.45);
-    });
-  } catch {
-    // Audio is a nice-to-have; never let it break the moment.
-  }
-}
-
-function playShutterSound() {
-  try {
-    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-    const now = audioContext.currentTime;
-
-    const click = audioContext.createOscillator();
-    const clickGain = audioContext.createGain();
-    click.type = 'square';
-    click.frequency.setValueAtTime(1400, now);
-    clickGain.gain.setValueAtTime(0.05, now);
-    clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
-    click.connect(clickGain);
-    clickGain.connect(audioContext.destination);
-    click.start(now);
-    click.stop(now + 0.07);
-
-    const chime = audioContext.createOscillator();
-    const chimeGain = audioContext.createGain();
-    chime.type = 'sine';
-    chime.frequency.setValueAtTime(880, now + 0.05);
-    chimeGain.gain.setValueAtTime(0.0001, now + 0.05);
-    chimeGain.gain.exponentialRampToValueAtTime(0.06, now + 0.09);
-    chimeGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.32);
-    chime.connect(chimeGain);
-    chimeGain.connect(audioContext.destination);
-    chime.start(now + 0.05);
-    chime.stop(now + 0.34);
-  } catch {
-    // Audio is a nice-to-have; never block capture on it.
-  }
-}
 
 function renderLanding() {
   stopSubscriptions();
@@ -1535,7 +1318,7 @@ async function finishCaptureAfterCountdown() {
     document.querySelector('#cameraActions').classList.add('hidden');
     captionInput.focus();
   } catch (error) {
-    alert(error.message);
+    showError(error.message, 'Could not take the photo.');
   } finally {
     cameraActions?.classList.remove('disabled');
   }
@@ -1556,11 +1339,11 @@ function cancelReplacingPhoto() {
 
 async function requestSyncFlow() {
   const myCount = state.room?.participants?.[state.role]?.photoCount || 0;
-  if (myCount >= 3) return alert('You already have all 3 photos confirmed.');
+  if (myCount >= 3) return showError('You already have all 3 photos confirmed.');
 
   const partnerRole = otherRole(state.role);
   if (!state.room?.participants?.[partnerRole]?.joined) {
-    return alert(`${ROLES[partnerRole].name} hasn't joined this room yet.`);
+    return showError(`${ROLES[partnerRole].name} hasn't joined this room yet.`);
   }
 
   try {
@@ -1572,7 +1355,7 @@ async function requestSyncFlow() {
       seconds: state.timerSeconds
     });
   } catch (error) {
-    alert(error.message || 'Could not start the synced countdown.');
+    showError(error.message, 'Could not start the synced countdown.');
   }
 }
 
@@ -1755,47 +1538,14 @@ async function confirmPhoto() {
     updateRoomView();
     showToast(replacingIndex ? `Photo ${replacingIndex} replaced ♡` : 'Saved ♡');
   } catch (error) {
-    alert(error.message || 'Upload failed.');
+    showError(error.message, 'Upload failed.');
   } finally {
     button.disabled = false;
     button.textContent = 'Confirm photo';
   }
 }
 
-// Ticks a number up to its final value. Deliberately opt-in per call site
-// rather than automatic: the panels holding these numbers re-render on a
-// timer, and a counter that replayed every 30 seconds would be maddening.
-function countUp(element, to, { duration = 1100, format = (v) => String(v) } = {}) {
-  if (!element) return;
 
-  if (prefersReducedMotion() || !Number.isFinite(to)) {
-    element.innerHTML = format(to);
-    return;
-  }
-
-  let start = null;
-
-  const step = (now) => {
-    if (start === null) start = now;
-    const progress = Math.min(1, (now - start) / duration);
-    // Cubic ease-out: fast to begin with, settling onto the final value.
-    const eased = 1 - Math.pow(1 - progress, 3);
-    // innerHTML rather than textContent because these labels carry an
-    // inline icon. Every formatter here is defined in this file and only
-    // ever interpolates numbers, so nothing user-supplied reaches it.
-    element.innerHTML = format(Math.round(eased * to));
-    if (progress < 1) window.requestAnimationFrame(step);
-  };
-
-  window.requestAnimationFrame(step);
-}
-
-function restartAnimation(element) {
-  if (!element) return;
-  element.style.animation = 'none';
-  void element.offsetWidth;
-  element.style.animation = '';
-}
 
 function openCaptionEditor(role, index) {
   const photo = state.photos.find((item) => item.owner === role && item.index === index);
@@ -1844,7 +1594,7 @@ async function saveCaptionEditor() {
     closeCaptionEditor();
     showToast('Caption saved ♡');
   } catch (error) {
-    alert(error.message || 'Could not save the caption.');
+    showError(error.message, 'Could not save the caption.');
   } finally {
     saveBtn.disabled = false;
     saveBtn.textContent = 'Save';
@@ -2040,7 +1790,7 @@ async function publishCollageFlow() {
     });
     showToast('Saved to the booth ♡');
   } catch (error) {
-    alert(error.message || 'Could not save the collage to the booth.');
+    showError(error.message, 'Could not save the collage to the booth.');
   } finally {
     button.disabled = false;
     button.textContent = 'Save to booth';
@@ -2054,7 +1804,7 @@ async function shareCollageFlow() {
   const file = new File([state.collageBlob], `viktor-jericka-photobooth-${state.roomId}.png`, { type: 'image/png' });
 
   if (!navigator.canShare({ files: [file] })) {
-    alert('File sharing is not supported in this browser. Try Download PNG.');
+    showError('File sharing is not supported here. Try Download PNG.');
     return;
   }
 
@@ -2072,7 +1822,7 @@ async function shareCollageFlow() {
     // AbortError just means the person closed the native share sheet
     // without picking anything — not an actual failure worth surfacing.
     if (error?.name !== 'AbortError') {
-      alert(error.message || 'Sharing failed. Try Download PNG.');
+      showError(error.message, 'Sharing failed. Try Download PNG.');
     }
   } finally {
     button.disabled = false;
@@ -2109,7 +1859,7 @@ async function generateCollageFlow() {
     state.collagePreviewUrl = result.previewUrl;
     renderCollageSection(true);
   } catch (error) {
-    alert(error.message || 'Could not generate collage.');
+    showError(error.message, 'Could not generate collage.');
   } finally {
     button.disabled = false;
     button.textContent = 'Generate collage';
@@ -2131,13 +1881,13 @@ async function deleteSessionFlow() {
     stopCamera();
     renderLanding();
   } catch (error) {
-    alert(error.message || 'Could not delete the booth.');
+    showError(error.message, 'Could not delete the booth.');
   }
 }
 
 async function resetAllBoothsFlow() {
   const known = listRooms();
-  if (!known.length) return alert('There are no booths on this device to delete.');
+  if (!known.length) return showError('There are no booths on this device to delete.');
 
   const confirmed = confirm(
     `Delete all ${known.length} booth${known.length === 1 ? '' : 's'} from this device, including every uploaded photo? This cannot be undone.`

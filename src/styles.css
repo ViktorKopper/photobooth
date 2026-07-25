@@ -1845,6 +1845,17 @@ p {
   transform: translate(-50%, 0) scale(1);
 }
 
+/* Problems get their own colour so they aren't mistaken for a
+   confirmation at a glance, and room to breathe for longer messages. */
+.toast-error {
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 20px;
+  text-align: center;
+  line-height: 1.4;
+  background: linear-gradient(135deg, #c2506a, #8e1f35);
+  box-shadow: 0 16px 38px rgba(142, 31, 53, 0.38);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
