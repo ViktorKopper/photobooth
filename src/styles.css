@@ -1,16 +1,40 @@
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Type ---------------------------------------------------------------
+     The whole interface is handwritten. `marker` is the fat felt-tip used
+     for anything that would be written boldly — headings, labels, buttons.
+     `hand` is the everyday pen used for running text; it's far more legible
+     at small sizes than the marker, which turns to mush below ~16px.
+     `ui` survives in exactly one place: the room code, where a misread
+     character costs someone a failed join. */
+  --font-marker: "Permanent Marker", "Bradley Hand", cursive;
+  --font-hand: "Caveat", "Segoe Script", cursive;
+  --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  font-family: var(--font-hand);
+  /* Handwriting runs optically smaller than a sans at the same nominal
+     size, so the whole scale is nudged up to compensate. */
+  font-size: 115%;
   color: #4f2731;
-  background: #fff7f4;
+  background: #fdf6f2;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  --bg: #fff7f4;
+
+  /* Palette ------------------------------------------------------------
+     `paper` is the opaque surface memories sit on; `sage` is the one
+     deliberately non-pink accent, there to stop the whole thing going
+     saccharine and to give the shared action its own identity. */
+  --paper: #fff9f5;
+  --paper-edge: rgba(122, 39, 64, 0.14);
+  --blush: #ffd9e4;
+  --sage: #a8bfa0;
+  --sage-deep: #3f5638;
+  --bg: #fdf6f2;
   --card: rgba(255, 255, 255, 0.78);
   --text: #4f2731;
   --muted: #8b5a65;
   --rose: #d94d72;
-  --rose-dark: #9b2948;
+  --rose-dark: #7a2740;
   --cream: #fffdf8;
   --border: rgba(217, 77, 114, 0.18);
   --viktor: #3f7fb8;
@@ -56,29 +80,44 @@
   box-sizing: border-box;
 }
 
+/* The whole app sits on a sheet of ruled notebook paper. The rules live on
+   the page rather than on the cards: text inside cards can't be guaranteed
+   to sit on a 30px rhythm, and lines running behind mismatched text reads
+   as a mistake. Behind everything, they read as stationery. */
 body {
   margin: 0;
   min-height: 100vh;
   color: var(--text);
   background:
-    radial-gradient(circle at 20% 20%, rgba(248, 182, 200, 0.45), transparent 28%),
-    radial-gradient(circle at 80% 10%, rgba(255, 224, 219, 0.8), transparent 30%),
-    radial-gradient(circle at 50% 90%, rgba(255, 203, 215, 0.55), transparent 34%),
-    linear-gradient(135deg, #fff7f4, #ffe9ef 58%, #fffdf8);
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 29px,
+      rgba(157, 195, 230, 0.28) 29px 30px
+    ),
+    radial-gradient(circle at 20% 18%, rgba(255, 217, 228, 0.55), transparent 30%),
+    radial-gradient(circle at 82% 8%, rgba(255, 233, 226, 0.7), transparent 32%),
+    linear-gradient(140deg, #fdf6f2, #ffeef3 58%, #fffaf6);
+  background-attachment: fixed;
 }
 
+/* The margin rule every notebook has, down the left. Hidden on narrow
+   screens where there isn't room for a margin to read as one. */
 body::before {
-  content: "♡  ♡   ♥   ♡  ♥   ♡";
+  content: "";
   position: fixed;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  left: max(28px, calc(50% - 560px));
+  width: 2px;
   pointer-events: none;
-  opacity: 0.12;
-  font: 92px Georgia, serif;
-  letter-spacing: 38px;
-  line-height: 1.8;
-  color: var(--rose-dark);
-  transform: rotate(-12deg);
+  background: rgba(232, 93, 133, 0.35);
   z-index: 0;
+}
+
+@media (max-width: 900px) {
+  body::before {
+    display: none;
+  }
 }
 
 button,
@@ -119,12 +158,35 @@ select:focus-visible {
   place-items: center;
 }
 
+/* PAPER layer — surfaces that hold memories. Opaque, grainy, physical.
+   Deliberately no backdrop-filter: paper isn't see-through, and the grain
+   fights the blur when both are applied to the same surface. Controls that
+   float above these keep the glass treatment instead. */
 .card {
-  border: 1px solid var(--border);
-  background: var(--card);
-  backdrop-filter: blur(18px);
+  position: relative;
+  border: 1px solid var(--paper-edge);
+  background: var(--paper);
   border-radius: var(--r-lg);
   box-shadow: var(--elev-2);
+}
+
+/* Same grain the collage prints with, so the app and its output finally
+   share a texture instead of looking like two different products. */
+.card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0.45;
+  background-image: radial-gradient(var(--paper-edge) 0.5px, transparent 0.5px);
+  background-size: 3px 3px;
+}
+
+/* Everything inside a card needs to sit above the grain overlay. */
+.card > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* The hero card is the only thing on screen when it appears, so it earns
@@ -173,30 +235,36 @@ select:focus-visible {
 .eyebrow {
   margin: 0 0 10px;
   color: var(--rose-dark);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 0.76rem;
-  font-weight: 800;
+  font-family: var(--font-marker);
+  /* Marker is already emphatic; uppercase on top of it reads as shouting,
+     and the letterspacing that suited Inter breaks its rhythm. */
+  letter-spacing: 0.02em;
+  font-size: 0.8rem;
+  font-weight: 400;
+  opacity: 0.8;
 }
 
 h1,
 h2 {
   margin: 0;
-  line-height: 1.05;
+  line-height: 1.1;
+  font-family: var(--font-marker);
+  font-weight: 400;
 }
 
 h1 {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(2.2rem, 7vw, 4.8rem);
+  /* Capped well below the old 4.8rem — marker at that size overwhelms
+     everything near it. */
+  font-size: clamp(1.9rem, 5.5vw, 3rem);
 }
 
 h2 {
-  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-size: clamp(1.2rem, 2.6vw, 1.6rem);
 }
 
 p {
   color: var(--muted);
-  line-height: 1.65;
+  line-height: 1.5;
 }
 
 .hero-text {
@@ -364,8 +432,9 @@ p {
   display: block;
   margin: 16px 0 8px;
   color: var(--rose-dark);
-  font-size: 0.86rem;
-  font-weight: 800;
+  font-family: var(--font-marker);
+  font-size: 0.85rem;
+  font-weight: 400;
   text-align: left;
 }
 
@@ -390,12 +459,17 @@ p {
   border-color: #c92742;
 }
 
+/* The one place handwriting is the wrong answer. A room code gets read
+   aloud, retyped and compared character by character — 0/O and 1/I have to
+   be unmistakable, so this stays in a plain sans. */
 .room-input {
   margin: 10px 0 18px;
+  font-family: var(--font-ui);
   text-transform: uppercase;
   text-align: center;
   letter-spacing: 0.12em;
   font-weight: 800;
+  font-size: 0.95rem;
 }
 
 .action-row {
@@ -413,7 +487,9 @@ p {
   min-height: 48px;
   border-radius: var(--r-pill);
   padding: 12px 20px;
-  font-weight: 850;
+  font-family: var(--font-marker);
+  font-weight: 400;
+  letter-spacing: 0.01em;
   transition: transform var(--dur-slow) var(--ease-spring),
     box-shadow var(--dur-base) var(--ease-soft),
     opacity var(--dur-base) var(--ease-soft);
@@ -462,6 +538,18 @@ p {
   color: var(--rose-dark);
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid var(--border);
+}
+
+/* The one genuinely shared, two-person action gets the sage accent rather
+   than being a fourth pink pill among pink pills. */
+#syncBtn {
+  color: var(--sage-deep);
+  background: rgba(168, 191, 160, 0.32);
+  border-color: rgba(63, 86, 56, 0.24);
+}
+
+#syncBtn:hover:not(:disabled) {
+  background: rgba(168, 191, 160, 0.48);
 }
 
 .ghost {
@@ -529,7 +617,7 @@ p {
   border-radius: var(--r-pill);
   color: white;
   background: linear-gradient(135deg, #f28aaa, #c7345a);
-  font: 42px Georgia, serif;
+  font: 34px var(--font-marker);
 }
 
 .role-card[data-role='viktor'] span {
@@ -599,10 +687,12 @@ p {
   border-radius: var(--r-xs);
 }
 
+/* Same reasoning as .room-input — this code gets transcribed. */
 .qr-code-text {
   margin: 0;
   color: var(--muted);
-  font-size: 0.74rem;
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.12em;
 }
@@ -915,15 +1005,25 @@ p {
      during the 3-2-1 count, like looking at yourself in a real photobooth,
      instead of being fully hidden behind a solid tint. */
   background: rgba(79, 39, 49, 0.2);
-  font: 900 clamp(5rem, 20vw, 12rem) Georgia, serif;
+  font: 400 clamp(4.5rem, 18vw, 10rem) var(--font-marker);
   text-shadow: 0 14px 40px rgba(0, 0, 0, 0.24);
 }
 
+/* GLASS layer — tools, not memories. These float above the paper, so the
+   translucency and blur are doing real work here rather than being applied
+   to everything indiscriminately. */
 .camera-controls {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-top: 14px;
+  padding: 8px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: var(--elev-1);
 }
 
 .filter-row {
@@ -1098,10 +1198,10 @@ p {
 }
 
 .caption-input::placeholder {
-  color: rgba(139, 90, 101, 0.45);
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  font-size: 0.85rem;
-  font-weight: 600;
+  color: rgba(139, 90, 101, 0.5);
+  font-family: var(--font-hand);
+  font-size: 1rem;
+  font-weight: 500;
 }
 
 .caption-input:focus {
@@ -1135,8 +1235,9 @@ p {
   color: var(--rose-dark);
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid var(--border);
-  font-weight: 800;
-  font-size: 0.86rem;
+  font-family: var(--font-marker);
+  font-weight: 400;
+  font-size: 0.8rem;
   transition: transform var(--dur-slow) var(--ease-spring),
     box-shadow var(--dur-base) var(--ease-soft),
     background var(--dur-base) var(--ease-soft),
