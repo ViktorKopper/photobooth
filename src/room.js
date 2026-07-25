@@ -1,9 +1,14 @@
+// This module is loaded dynamically by main.js, which is what keeps the
+// Firestore and Storage SDKs out of the initial page download. They're
+// imported statically here on purpose: everything in this file needs them,
+// and the whole file only arrives once a booth is being opened.
 import {
   collection,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
+  getFirestore,
   onSnapshot,
   serverTimestamp,
   setDoc,
@@ -12,11 +17,15 @@ import {
 import {
   deleteObject,
   getDownloadURL,
+  getStorage,
   ref,
   uploadBytes
 } from 'firebase/storage';
-import { db, storage } from './firebase.js';
+import { app } from './firebase.js';
 import { generateRoomId, ROLES } from './utils.js';
+
+const db = getFirestore(app);
+const storage = getStorage(app);
 
 function blankParticipant() {
   return {

@@ -1,3 +1,8 @@
+// Only the App and Auth SDKs are imported here, and deliberately so.
+// Firestore alone is ~450 kB of the bundle and isn't needed until someone
+// actually enters a booth — it lives in room.js instead, which main.js
+// imports dynamically. Adding a `firebase/firestore` import back into this
+// file would pull all of it into the initial download again.
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
@@ -6,8 +11,6 @@ import {
   setPersistence,
   browserLocalPersistence
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 
 // 1) Create a Firebase web app in Firebase Console.
 // 2) Replace this object with your own Firebase config.
@@ -22,11 +25,9 @@ const firebaseConfig = {
   measurementId: "G-D8MQCQZKYY"
 };
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
 
 export async function ensureAnonymousAuth() {
   await setPersistence(auth, browserLocalPersistence);

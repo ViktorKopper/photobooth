@@ -3,7 +3,6 @@ import { ensureAnonymousAuth } from './firebase.js';
 import { capturePhoto, startCamera, stopCamera } from './camera.js';
 import { COLLAGE_THEMES, EXPORT_PRESETS, generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
-import QRCode from 'qrcode';
 import { describeLocation, describeSearchResult, fetchWeather, searchCities } from './geo.js';
 import {
   expiredRoomIds,
@@ -13,21 +12,17 @@ import {
   rememberRoom,
   ROOM_MAX_AGE_MS
 } from './roomHistory.js';
-import {
-  clearSyncCountdown,
-  createRoom,
-  deleteRoomSession,
-  joinRoom,
-  publishCollage,
-  requestSyncCountdown,
-  setReaction,
-  setRoomCompleted,
-  updateCaption,
-  updateLocation,
-  uploadPhoto,
-  watchPhotos,
-  watchRoom
-} from './room.js';
+// room.js is imported on demand rather than up front. It pulls in the
+// Firestore and Storage SDKs — about two thirds of the whole bundle — none
+// of which is needed to render the landing page, pick a city or scan a QR
+// code. Loading it lazily lets the app become interactive first and fetch
+// the heavy part while the person is still typing.
+let roomModulePromise = null;
+
+function roomApi() {
+  if (!roomModulePromise) roomModulePromise = import('./room.js');
+  return roomModulePromise;
+}
 import {
   dayDeltaBetween,
   daysTogether,
@@ -82,6 +77,7 @@ const state = {
   facingMode: 'user',
   activeFilter: 'none',
   timerSeconds: 3,
+  onionSkinOn: false,
   customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
   myLocation: readStoredLocation(),
   citySearchResults: [],
@@ -100,7 +96,8 @@ const state = {
   clockTimer: null,
   weather: { viktor: null, jericka: null },
   weatherKey: '',
-  weatherTimer: null
+  weatherTimer: null,
+  bothCompleteSeen: null
 };
 
 function readStoredLocation() {
@@ -172,7 +169,7 @@ async function pruneExpiredRooms() {
 
   for (const roomId of stale) {
     try {
-      await deleteRoomSession(roomId);
+      await (await roomApi()).deleteRoomSession(roomId);
     } catch {
       // Already gone, or the other side deleted it first — either way the
       // local record should go too.
@@ -255,6 +252,110 @@ function triggerShutterFeedback() {
 }
 
 let audioContext = null;
+
+// Fired once, the moment the sixth photo lands and the collage unlocks.
+// Hand-rolled rather than pulling in a confetti library for one animation.
+function celebrateCompletion() {
+  showToast('All six photos — your collage is ready ♡');
+  playCelebrationSound();
+
+  // Someone who has asked their system to reduce motion should not get a
+  // screenful of flying particles.
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'confetti-canvas';
+  document.body.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  ctx.scale(dpr, dpr);
+
+  const colours = ['#e85d85', '#c7345a', '#f28aaa', '#3f7fb8', '#ffd9e6', '#b82449'];
+  const pieces = Array.from({ length: 90 }, () => ({
+    x: Math.random() * width,
+    y: -20 - Math.random() * height * 0.4,
+    size: 6 + Math.random() * 7,
+    vx: -1.2 + Math.random() * 2.4,
+    vy: 2.2 + Math.random() * 2.8,
+    spin: -0.2 + Math.random() * 0.4,
+    angle: Math.random() * Math.PI * 2,
+    colour: colours[Math.floor(Math.random() * colours.length)],
+    heart: Math.random() < 0.25
+  }));
+
+  const startedAt = performance.now();
+  const DURATION = 2800;
+
+  const frame = (now) => {
+    const elapsed = now - startedAt;
+    ctx.clearRect(0, 0, width, height);
+
+    // Fade the whole thing out over the final third rather than cutting.
+    ctx.globalAlpha = elapsed > DURATION * 0.66
+      ? Math.max(0, 1 - (elapsed - DURATION * 0.66) / (DURATION * 0.34))
+      : 1;
+
+    pieces.forEach((piece) => {
+      piece.x += piece.vx;
+      piece.y += piece.vy;
+      piece.angle += piece.spin;
+
+      ctx.save();
+      ctx.translate(piece.x, piece.y);
+      ctx.rotate(piece.angle);
+      ctx.fillStyle = piece.colour;
+
+      if (piece.heart) {
+        ctx.font = `${piece.size * 1.6}px Georgia, serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText('♥', 0, 0);
+      } else {
+        ctx.fillRect(-piece.size / 2, -piece.size / 4, piece.size, piece.size / 2);
+      }
+
+      ctx.restore();
+    });
+
+    if (elapsed < DURATION) {
+      window.requestAnimationFrame(frame);
+    } else {
+      canvas.remove();
+    }
+  };
+
+  window.requestAnimationFrame(frame);
+}
+
+function playCelebrationSound() {
+  try {
+    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioContext.currentTime;
+
+    // A small rising arpeggio — reads as "done!" rather than as another
+    // shutter click.
+    [523.25, 659.25, 783.99, 1046.5].forEach((frequency, index) => {
+      const at = now + index * 0.11;
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(frequency, at);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.08, at + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.42);
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.start(at);
+      osc.stop(at + 0.45);
+    });
+  } catch {
+    // Audio is a nice-to-have; never let it break the moment.
+  }
+}
 
 function playShutterSound() {
   try {
@@ -577,6 +678,8 @@ async function enterBooth(isCreate) {
   renderLoading(isCreate ? 'Creating your booth...' : 'Joining your booth...');
 
   try {
+    const { createRoom, joinRoom } = await roomApi();
+
     if (isCreate) {
       state.roomId = await createRoom({
         uid: state.user.uid,
@@ -605,6 +708,8 @@ async function enterBooth(isCreate) {
 async function enterRoom() {
   stopSubscriptions();
   renderRoomShell();
+
+  const { watchRoom, watchPhotos } = await roomApi();
 
   state.unsubscribeRoom = watchRoom(
     state.roomId,
@@ -673,6 +778,7 @@ function renderRoomShell() {
         <section class="card camera-card">
           <div class="camera-wrap">
             <video id="cameraPreview" class="camera-preview" autoplay muted playsinline></video>
+            <img id="onionSkin" class="onion-skin hidden" alt="" aria-hidden="true" />
             <div id="countdown" class="countdown hidden" aria-live="polite"></div>
             <div id="shutterFlash" class="shutter-flash" aria-hidden="true"></div>
             <div id="cameraError" class="camera-error hidden"></div>
@@ -686,6 +792,7 @@ function renderRoomShell() {
                   `<button type="button" class="timer-option${seconds === state.timerSeconds ? ' active' : ''}" data-seconds="${seconds}">${seconds}s</button>`
               ).join('')}
             </div>
+            <button type="button" class="timer-option ghost-toggle hidden" id="onionToggleBtn" title="Show your previous photo faintly over the camera" aria-pressed="false">👻</button>
           </div>
 
           <div id="previewPanel" class="preview-panel hidden">
@@ -766,13 +873,18 @@ function renderRoomShell() {
     button.addEventListener('click', () => selectFilter(button.dataset.filterId));
   });
 
-  document.querySelectorAll('.timer-option').forEach((button) => {
+  document.querySelectorAll('.timer-picker .timer-option').forEach((button) => {
     button.addEventListener('click', () => {
       state.timerSeconds = Number(button.dataset.seconds);
-      document.querySelectorAll('.timer-option').forEach((option) => {
+      document.querySelectorAll('.timer-picker .timer-option').forEach((option) => {
         option.classList.toggle('active', option === button);
       });
     });
+  });
+
+  document.querySelector('#onionToggleBtn').addEventListener('click', () => {
+    state.onionSkinOn = !state.onionSkinOn;
+    renderOnionSkin();
   });
 
   document.querySelector('#takePhotoBtn').addEventListener('click', takePhotoFlow);
@@ -818,6 +930,55 @@ function renderRoomShell() {
   });
 }
 
+// Which of your own photos to ghost over the live preview. When redoing a
+// slot it's that same slot — matching the shot you're replacing is the
+// whole point. Otherwise it's your most recent one, to line the next shot
+// up against it.
+function onionSkinPhoto() {
+  const mine = state.photos.filter((photo) => photo.owner === state.role);
+  if (!mine.length) return null;
+
+  if (state.replacingIndex) {
+    return mine.find((photo) => photo.index === state.replacingIndex) || null;
+  }
+
+  return mine.reduce((latest, photo) => (photo.index > latest.index ? photo : latest));
+}
+
+function renderOnionSkin() {
+  const image = document.querySelector('#onionSkin');
+  const toggle = document.querySelector('#onionToggleBtn');
+  if (!image || !toggle) return;
+
+  const photo = onionSkinPhoto();
+
+  // Nothing to trace over until at least one photo exists.
+  toggle.classList.toggle('hidden', !photo);
+  if (!photo) {
+    image.classList.add('hidden');
+    return;
+  }
+
+  toggle.classList.toggle('active', state.onionSkinOn);
+  toggle.setAttribute('aria-pressed', String(state.onionSkinOn));
+
+  if (!state.onionSkinOn) {
+    image.classList.add('hidden');
+    return;
+  }
+
+  if (image.dataset.src !== photo.downloadUrl) {
+    image.dataset.src = photo.downloadUrl;
+    image.src = photo.downloadUrl;
+  }
+
+  // The stored photo is already un-mirrored, but the live preview is
+  // mirrored for the front camera — so the ghost has to be flipped to
+  // sit the same way round as what you see of yourself.
+  image.classList.toggle('mirrored', state.facingMode === 'user');
+  image.classList.remove('hidden');
+}
+
 // Rendered locally rather than through any QR web service on purpose: the
 // room link is the only thing standing between a stranger and your photos,
 // so it must never be handed to a third-party image API to draw.
@@ -826,6 +987,10 @@ async function renderJoinQr() {
   if (!image) return;
 
   try {
+    // Loaded on demand: the QR encoder is only ever needed inside a booth,
+    // so it shouldn't sit in the initial download either.
+    const { default: QRCode } = await import('qrcode');
+
     image.src = await QRCode.toDataURL(roomLink(state.roomId), {
       width: 300,
       margin: 1,
@@ -868,6 +1033,7 @@ async function startCurrentCamera() {
     video.classList.toggle('mirrored', state.facingMode === 'user');
     video.style.filter = activeFilterCss();
 
+    renderOnionSkin();
     updateRoomView();
   } catch (error) {
     state.cameraStarted = false;
@@ -1134,6 +1300,15 @@ function updateRoomView() {
   const theirCount = state.room.participants?.[theirRole]?.photoCount || 0;
   const bothComplete = viktorCount >= 3 && jerickaCount >= 3;
 
+  // Only celebrate the actual moment it happens. Starting at null means
+  // re-opening an already-finished booth stays quiet — the party is for
+  // crossing the line, not for walking back past it.
+  const wasComplete = state.bothCompleteSeen;
+  state.bothCompleteSeen = bothComplete;
+  if (bothComplete && wasComplete === false) {
+    celebrateCompletion();
+  }
+
   if (roomMessage) {
     if (state.replacingIndex) {
       roomMessage.textContent = `Retaking photo ${state.replacingIndex}. Take a new one, or cancel below.`;
@@ -1163,6 +1338,8 @@ function updateRoomView() {
   if (cancelReplaceBtn) {
     cancelReplaceBtn.classList.toggle('hidden', !state.replacingIndex);
   }
+
+  renderOnionSkin();
 
   const syncButton = document.querySelector('#syncBtn');
   if (syncButton) {
@@ -1273,6 +1450,7 @@ async function requestSyncFlow() {
   }
 
   try {
+    const { requestSyncCountdown } = await roomApi();
     await requestSyncCountdown({
       roomId: state.roomId,
       uid: state.user.uid,
@@ -1355,13 +1533,13 @@ function scheduleSyncCountdown(targetAtMs, seconds = 3) {
     scheduleAt(number * 1000, () => showNumber(number));
   }
 
-  scheduleAt(0, () => finishCaptureAfterCountdown().then(() => {
+  scheduleAt(0, () => finishCaptureAfterCountdown().then(async () => {
     hideSyncStatus();
     // Whoever requested the sync clears it once it fires, returning the
     // room to a clean state for the next one. Harmless no-op if the other
     // side (or a stale timer) races to clear it too.
     if (state.room?.syncCountdown?.requestedBy === state.role) {
-      clearSyncCountdown(state.roomId);
+      (await roomApi()).clearSyncCountdown(state.roomId);
     }
   }));
 }
@@ -1448,6 +1626,7 @@ async function confirmPhoto() {
   button.textContent = 'Uploading...';
 
   try {
+    const { uploadPhoto } = await roomApi();
     await uploadPhoto({
       roomId: state.roomId,
       uid: state.user.uid,
@@ -1503,6 +1682,7 @@ async function saveCaptionEditor() {
   saveBtn.textContent = 'Saving...';
 
   try {
+    const { updateCaption } = await roomApi();
     await updateCaption({ roomId: state.roomId, uid: state.user.uid, role, index, caption });
     closeCaptionEditor();
     showToast('Caption saved ♡');
@@ -1526,6 +1706,7 @@ async function toggleReactionFlow(ownerRole, index) {
   const nextValue = !photo.reactions?.[state.role];
 
   try {
+    const { setReaction } = await roomApi();
     await setReaction({
       roomId: state.roomId,
       uid: state.user.uid,
@@ -1661,10 +1842,10 @@ function renderCollageSection(canGenerate) {
   });
 
   document.querySelector('#generateCollageBtn').addEventListener('click', generateCollageFlow);
-  document.querySelector('#downloadCollageBtn').addEventListener('click', () => {
+  document.querySelector('#downloadCollageBtn').addEventListener('click', async () => {
     if (state.collageBlob) {
       downloadBlob(state.collageBlob, `viktor-jericka-photobooth-${state.roomId}.png`);
-      setRoomCompleted(state.roomId).catch(() => undefined);
+      (await roomApi()).setRoomCompleted(state.roomId).catch(() => undefined);
     }
   });
   document.querySelector('#shareCollageBtn')?.addEventListener('click', shareCollageFlow);
@@ -1688,6 +1869,7 @@ async function publishCollageFlow() {
   button.textContent = 'Saving...';
 
   try {
+    const { publishCollage } = await roomApi();
     await publishCollage({
       roomId: state.roomId,
       uid: state.user.uid,
@@ -1728,7 +1910,7 @@ async function shareCollageFlow() {
       title: 'Viktor & Jericka Photobooth',
       text: state.room?.customMessage || state.customMessage
     });
-    setRoomCompleted(state.roomId).catch(() => undefined);
+    (await roomApi()).setRoomCompleted(state.roomId).catch(() => undefined);
   } catch (error) {
     // AbortError just means the person closed the native share sheet
     // without picking anything — not an actual failure worth surfacing.
@@ -1782,7 +1964,7 @@ async function deleteSessionFlow() {
   if (!confirmed) return;
 
   try {
-    await deleteRoomSession(state.roomId);
+    await (await roomApi()).deleteRoomSession(state.roomId);
     forgetRoom(state.roomId);
     window.history.replaceState({}, '', window.location.pathname);
     state.roomId = '';
@@ -1810,6 +1992,8 @@ async function resetAllBoothsFlow() {
     button.disabled = true;
     button.textContent = 'Deleting...';
   }
+
+  const { deleteRoomSession } = await roomApi();
 
   let failed = 0;
   for (const entry of known) {
@@ -1843,6 +2027,7 @@ function stopSubscriptions() {
   // matching the stale key and skipping the lookup.
   state.weatherKey = '';
   state.weather = { viktor: null, jericka: null };
+  state.bothCompleteSeen = null;
 }
 
 // Backfills the room with this browser's stored city if the room doesn't
@@ -1854,6 +2039,7 @@ async function syncMyLocationToRoom() {
   if (isUsableLocation(state.room?.participants?.[state.role]?.location)) return;
 
   try {
+    const { updateLocation } = await roomApi();
     await updateLocation({ roomId: state.roomId, uid: state.user.uid, role: state.role, location: mine });
   } catch (error) {
     console.error('Could not save location', error);

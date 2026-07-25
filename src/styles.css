@@ -833,6 +833,35 @@ p {
   box-shadow: 0 0 0 3px rgba(217, 77, 114, 0.18);
 }
 
+.onion-skin {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  opacity: 0.32;
+  /* Slight desaturation stops the ghost competing with the live image for
+     attention — it should read as a guide, not a second photo. */
+  filter: grayscale(0.4);
+}
+
+.onion-skin.mirrored {
+  transform: scaleX(-1);
+}
+
+.ghost-toggle {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.ghost-toggle.active {
+  color: white;
+  background: linear-gradient(135deg, #e85d85, #b82449);
+  border-color: transparent;
+}
+
 .shutter-flash {
   position: absolute;
   inset: 0;
@@ -1059,6 +1088,15 @@ p {
 
 .countdown.pulse {
   animation: countdownPulse 750ms ease;
+}
+
+.confetti-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .toast {
