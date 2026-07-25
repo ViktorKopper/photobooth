@@ -27,6 +27,44 @@ import { generateRoomId, ROLES } from './utils.js';
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+// Confirms the caller really is the participant they claim to be, before a
+// write goes out.
+//
+// The screens already hold a live copy of the room — watchRoom() keeps it
+// current over a realtime subscription — so in the normal case this needs
+// no network at all. Re-reading the document first, as every one of these
+// writes used to, meant a full round trip before each heart tap, caption
+// save or reorder, purely to produce a nicer error message.
+//
+// It is not a security boundary either way: the Firestore rules enforce
+// the same ownership independently, and they are the only check that
+// actually matters. This exists to fail fast and say something useful.
+async function assertParticipant({ roomId, uid, role, room }) {
+  const known = room?.participants?.[role];
+
+  if (known) {
+    if (known.uid !== uid) {
+      throw new Error('This browser is not connected as this person in the room.');
+    }
+    return room;
+  }
+
+  // No snapshot to hand — fall back to reading it.
+  const snapshot = await getDoc(doc(db, 'rooms', roomId));
+
+  if (!snapshot.exists()) {
+    throw new Error('Room no longer exists.');
+  }
+
+  const data = snapshot.data();
+
+  if (data.participants?.[role]?.uid !== uid) {
+    throw new Error('This browser is not connected as this person in the room.');
+  }
+
+  return data;
+}
+
 function blankParticipant() {
   return {
     uid: null,
@@ -109,17 +147,9 @@ export async function joinRoom({ roomId, uid, role, location = null }) {
 
 // Lets someone set (or change) their own city after the room already
 // exists — e.g. they joined before picking one, or moved.
-export async function updateLocation({ roomId, uid, role, location }) {
+export async function updateLocation({ roomId, uid, role, location, room = null }) {
   const roomRef = doc(db, 'rooms', roomId);
-  const roomSnapshot = await getDoc(roomRef);
-
-  if (!roomSnapshot.exists()) {
-    throw new Error('Room no longer exists.');
-  }
-
-  if (roomSnapshot.data().participants?.[role]?.uid !== uid) {
-    throw new Error('This browser is not connected as this person in the room.');
-  }
+  await assertParticipant({ roomId, uid, role, room });
 
   await updateDoc(roomRef, {
     [`participants.${role}.location`]: location || null,
@@ -159,20 +189,10 @@ export function watchPhotos(roomId, onChange, onError) {
   );
 }
 
-export async function uploadPhoto({ roomId, uid, role, index, blob, caption = '', replace = false }) {
+export async function uploadPhoto({ roomId, uid, role, index, blob, caption = '', replace = false, room = null }) {
   const roomRef = doc(db, 'rooms', roomId);
-  const roomSnapshot = await getDoc(roomRef);
-
-  if (!roomSnapshot.exists()) {
-    throw new Error('Room no longer exists.');
-  }
-
-  const room = roomSnapshot.data();
-  const participant = room.participants?.[role];
-
-  if (participant?.uid !== uid) {
-    throw new Error('This browser is not connected as this person in the room.');
-  }
+  const current = await assertParticipant({ roomId, uid, role, room });
+  const participant = current.participants?.[role];
 
   // A replacement targets an existing slot, so the "you're full" guard
   // doesn't apply — being at 3/3 is exactly when you'd want to redo one.
@@ -225,7 +245,7 @@ export async function uploadPhoto({ roomId, uid, role, index, blob, caption = ''
     [`participants.${role}.completed`]: safeIndex >= 3,
     [`participants.${role}.lastActiveAt`]: serverTimestamp(),
     updatedAt: serverTimestamp(),
-    status: bothCompletedAfterUpload(room, role, safeIndex) ? 'ready' : 'shooting'
+    status: bothCompletedAfterUpload(current, role, safeIndex) ? 'ready' : 'shooting'
   });
 }
 
@@ -236,19 +256,11 @@ export async function uploadPhoto({ roomId, uid, role, index, blob, caption = ''
 // require a path to match `photo-[1-3].jpg` for the right room and owner —
 // they don't tie a file to the slot it started in — so a photo shot into
 // slot 3 is perfectly valid sitting in slot 1.
-export async function swapPhotos({ roomId, uid, role, indexA, indexB }) {
+export async function swapPhotos({ roomId, uid, role, indexA, indexB, room = null }) {
   if (indexA === indexB) return;
 
   const roomRef = doc(db, 'rooms', roomId);
-  const roomSnapshot = await getDoc(roomRef);
-
-  if (!roomSnapshot.exists()) {
-    throw new Error('Room no longer exists.');
-  }
-
-  if (roomSnapshot.data().participants?.[role]?.uid !== uid) {
-    throw new Error('This browser is not connected as this person in the room.');
-  }
+  await assertParticipant({ roomId, uid, role, room });
 
   const refA = doc(db, 'rooms', roomId, 'photos', `${role}-${indexA}`);
   const refB = doc(db, 'rooms', roomId, 'photos', `${role}-${indexB}`);
@@ -278,19 +290,8 @@ export async function swapPhotos({ roomId, uid, role, indexA, indexB }) {
   });
 }
 
-export async function updateCaption({ roomId, uid, role, index, caption }) {
-  const roomRef = doc(db, 'rooms', roomId);
-  const roomSnapshot = await getDoc(roomRef);
-
-  if (!roomSnapshot.exists()) {
-    throw new Error('Room no longer exists.');
-  }
-
-  const participant = roomSnapshot.data().participants?.[role];
-
-  if (participant?.uid !== uid) {
-    throw new Error('This browser is not connected as this person in the room.');
-  }
+export async function updateCaption({ roomId, uid, role, index, caption, room = null }) {
+  await assertParticipant({ roomId, uid, role, room });
 
   const safeIndex = Math.max(1, Math.min(index, 3));
 
@@ -308,19 +309,8 @@ export async function updateCaption({ roomId, uid, role, index, caption }) {
 // final collage. `myRole` is whoever is reacting; `ownerRole`/`index`
 // identify which photo. Firestore rules restrict this to only ever
 // touching the caller's own key inside the `reactions` map.
-export async function setReaction({ roomId, uid, myRole, ownerRole, index, value }) {
-  const roomRef = doc(db, 'rooms', roomId);
-  const roomSnapshot = await getDoc(roomRef);
-
-  if (!roomSnapshot.exists()) {
-    throw new Error('Room no longer exists.');
-  }
-
-  const participant = roomSnapshot.data().participants?.[myRole];
-
-  if (participant?.uid !== uid) {
-    throw new Error('This browser is not connected as this person in the room.');
-  }
+export async function setReaction({ roomId, uid, myRole, ownerRole, index, value, room = null }) {
+  await assertParticipant({ roomId, uid, role: myRole, room });
 
   const safeIndex = Math.max(1, Math.min(index, 3));
 
@@ -335,19 +325,9 @@ export async function setReaction({ roomId, uid, myRole, ownerRole, index, value
 // (requestedAt + a fixed lead time) — anchoring both devices to one
 // server-issued timestamp instead of trusting each phone's local clock to
 // agree on "now".
-export async function requestSyncCountdown({ roomId, uid, role, seconds = 3 }) {
+export async function requestSyncCountdown({ roomId, uid, role, seconds = 3, room = null }) {
   const roomRef = doc(db, 'rooms', roomId);
-  const roomSnapshot = await getDoc(roomRef);
-
-  if (!roomSnapshot.exists()) {
-    throw new Error('Room no longer exists.');
-  }
-
-  const participant = roomSnapshot.data().participants?.[role];
-
-  if (participant?.uid !== uid) {
-    throw new Error('This browser is not connected as this person in the room.');
-  }
+  await assertParticipant({ roomId, uid, role, room });
 
   await updateDoc(roomRef, {
     // The length travels with the request so both devices run the exact
@@ -367,12 +347,16 @@ export async function requestSyncCountdown({ roomId, uid, role, seconds = 3 }) {
 // step: the reader treats anything older than a few seconds as finished,
 // which means a browser that closes mid-countdown can't leave the other
 // person staring at a stuck indicator.
-export async function markShooting({ roomId, uid, role }) {
+export async function markShooting({ roomId, uid, role, room = null }) {
   const roomRef = doc(db, 'rooms', roomId);
-  const roomSnapshot = await getDoc(roomRef);
 
-  if (!roomSnapshot.exists()) return;
-  if (roomSnapshot.data().participants?.[role]?.uid !== uid) return;
+  // Fire-and-forget: a failed presence stamp must never surface as an
+  // error mid-countdown, so this stays silent rather than throwing.
+  try {
+    await assertParticipant({ roomId, uid, role, room });
+  } catch {
+    return;
+  }
 
   await updateDoc(roomRef, {
     [`participants.${role}.shootingAt`]: serverTimestamp(),
@@ -402,17 +386,9 @@ function bothCompletedAfterUpload(room, role, index) {
 // the same file. Without this each side renders their own copy locally,
 // with their own theme and layout picks — two different keepsakes of one
 // shared evening.
-export async function publishCollage({ roomId, uid, role, blob, meta = {} }) {
+export async function publishCollage({ roomId, uid, role, blob, meta = {}, room = null }) {
   const roomRef = doc(db, 'rooms', roomId);
-  const roomSnapshot = await getDoc(roomRef);
-
-  if (!roomSnapshot.exists()) {
-    throw new Error('Room no longer exists.');
-  }
-
-  if (roomSnapshot.data().participants?.[role]?.uid !== uid) {
-    throw new Error('This browser is not connected as this person in the room.');
-  }
+  await assertParticipant({ roomId, uid, role, room });
 
   // Deliberately outside the `photobooth/` prefix. Everything under that
   // prefix is swept by the Storage lifecycle rule after two days along with

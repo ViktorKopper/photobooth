@@ -171,23 +171,30 @@ export function findExportPreset(id) {
 // result looks composed for that format rather than letterboxed onto it.
 // Resolution is preserved by growing the canvas rather than shrinking the
 // artwork: the collage is never scaled up beyond 1:1.
-function fitOntoAspect(source, aspect) {
+// The geometry, kept separate from the drawing so it can be reasoned about
+// — and tested — without a canvas. This is where the actual decisions live:
+// which dimension drives the target, and how much breathing room to leave.
+export function targetSizeFor(sourceWidth, sourceHeight, aspect, margin = 0.94) {
+  if (!aspect) return { width: sourceWidth, height: sourceHeight };
+
+  if (sourceWidth / sourceHeight > aspect) {
+    // Source is relatively wider — its width drives the target size.
+    const width = Math.round(sourceWidth / margin);
+    return { width, height: Math.round(width / aspect) };
+  }
+
+  const height = Math.round(sourceHeight / margin);
+  return { width: Math.round(height * aspect), height };
+}
+
+export function fitOntoAspect(source, aspect) {
   if (!aspect) return source;
 
-  const sourceAspect = source.width / source.height;
-  const margin = 0.94;
-
-  let targetWidth;
-  let targetHeight;
-
-  if (sourceAspect > aspect) {
-    // Source is relatively wider — its width drives the target size.
-    targetWidth = Math.round(source.width / margin);
-    targetHeight = Math.round(targetWidth / aspect);
-  } else {
-    targetHeight = Math.round(source.height / margin);
-    targetWidth = Math.round(targetHeight * aspect);
-  }
+  const { width: targetWidth, height: targetHeight } = targetSizeFor(
+    source.width,
+    source.height,
+    aspect
+  );
 
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
@@ -728,7 +735,7 @@ function applyFilmGrain(ctx, width, height, opacity = 0.05) {
   ctx.restore();
 }
 
-function splitPhotosByOwner(photos) {
+export function splitPhotosByOwner(photos) {
   const viktor = photos
     .filter((photo) => photo.owner === 'viktor')
     .sort((a, b) => a.index - b.index);
@@ -814,7 +821,7 @@ async function loadImageFromUrl(url, cacheKey = url) {
 // not a safe cache key on its own — a stale image could be served for a
 // slot that was just replaced. Pairing the URL with the document's write
 // time guarantees a replacement always misses the cache.
-function photoCacheKey(photo) {
+export function photoCacheKey(photo) {
   const stamp = photo.createdAt?.toMillis?.() ?? photo.createdAt?.seconds ?? '';
   return `${photo.downloadUrl}|${stamp}`;
 }

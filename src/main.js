@@ -1389,7 +1389,7 @@ async function takePhotoFlow() {
   // not stall behind a network round trip.
   roomApi()
     .then(({ markShooting }) =>
-      markShooting({ roomId: state.roomId, uid: state.user.uid, role: state.role })
+      markShooting({ roomId: state.roomId, uid: state.user.uid, role: state.role, room: state.room })
     )
     .catch(() => undefined);
 
@@ -1488,7 +1488,8 @@ async function requestSyncFlow() {
       roomId: state.roomId,
       uid: state.user.uid,
       role: state.role,
-      seconds: state.timerSeconds
+      seconds: state.timerSeconds,
+      room: state.room
     });
   } catch (error) {
     showError(error.message, 'Could not start the synced countdown.');
@@ -1667,7 +1668,8 @@ async function confirmPhoto() {
       index: replacingIndex || myCount + 1,
       blob: state.pendingCapture.blob,
       caption: sanitizeCaption(state.pendingCapture.caption),
-      replace: Boolean(replacingIndex)
+      replace: Boolean(replacingIndex),
+      room: state.room
     });
     state.replacingIndex = null;
     retakePhoto();
@@ -1726,7 +1728,7 @@ async function saveCaptionEditor() {
 
   try {
     const { updateCaption } = await roomApi();
-    await updateCaption({ roomId: state.roomId, uid: state.user.uid, role, index, caption });
+    await updateCaption({ roomId: state.roomId, uid: state.user.uid, role, index, caption, room: state.room });
     closeCaptionEditor();
     showToast('Caption saved ♡');
   } catch (error) {
@@ -1750,7 +1752,8 @@ async function swapPhotosFlow(from, to) {
       uid: state.user.uid,
       role: state.role,
       indexA: from,
-      indexB: to
+      indexB: to,
+      room: state.room
     });
   } catch (error) {
     showError(error.message, 'Could not reorder the photos.');
@@ -1771,7 +1774,8 @@ async function toggleReactionFlow(ownerRole, index) {
       myRole: state.role,
       ownerRole,
       index,
-      value: nextValue
+      value: nextValue,
+      room: state.room
     });
   } catch (error) {
     console.error('Reaction failed', error);
@@ -1937,7 +1941,8 @@ async function publishCollageFlow() {
         layout: state.collageLayout,
         theme: state.collageTheme,
         format: state.collageExport
-      }
+      },
+      room: state.room
     });
     showToast('Saved to the booth ♡');
   } catch (error) {
@@ -2103,7 +2108,7 @@ async function syncMyLocationToRoom() {
 
   try {
     const { updateLocation } = await roomApi();
-    await updateLocation({ roomId: state.roomId, uid: state.user.uid, role: state.role, location: mine });
+    await updateLocation({ roomId: state.roomId, uid: state.user.uid, role: state.role, location: mine, room: state.room });
   } catch (error) {
     console.error('Could not save location', error);
   }
