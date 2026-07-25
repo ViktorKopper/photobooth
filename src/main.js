@@ -1,7 +1,7 @@
 import './styles.css';
 import { ensureAnonymousAuth } from './firebase.js';
 import { capturePhoto, startCamera, stopCamera } from './camera.js';
-import { COLLAGE_THEMES, EXPORT_PRESETS, generateCollage } from './collage.js';
+import { clearCollageImageCache, COLLAGE_THEMES, EXPORT_PRESETS, generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
 import { describeLocation, describeSearchResult, fetchWeather, searchCities } from './geo.js';
 import { ICONS, weatherIcon } from './icons.js';
@@ -2187,6 +2187,8 @@ function stopSubscriptions() {
   state.bothCompleteSeen = null;
   state.distanceIntroDone = false;
   state.dayCountIntroDone = false;
+  // Decoded photos are only useful for the booth they belong to.
+  clearCollageImageCache();
 }
 
 // Backfills the room with this browser's stored city if the room doesn't

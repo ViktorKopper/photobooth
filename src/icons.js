@@ -97,7 +97,11 @@ export const ICONS = {
 
 // Maps a WMO weather code onto one of the drawn icons above.
 export function weatherIcon(code) {
-  if (!Number.isFinite(code) || code < 0) return ICONS.thermometer;
+  // Guarded at both ends. WMO codes stop at 99, so anything outside that
+  // range is nonsense and must not fall through to whichever bucket
+  // happens to sit at the edge — the same mistake that once had unknown
+  // weather reporting clear skies.
+  if (!Number.isFinite(code) || code < 0 || code > 99) return ICONS.thermometer;
   if (code === 0) return ICONS.sun;
   if (code <= 2) return ICONS.cloudSun;
   if (code === 3) return ICONS.cloud;

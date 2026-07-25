@@ -744,19 +744,38 @@ function splitPhotosByOwner(photos) {
   return { viktor, jericka };
 }
 
-async function loadImageFromUrl(url) {
+// Decoded photos, keyed by download URL.
+//
+// Generating a collage is no longer a one-off: between three layouts, two
+// qualities, five themes and three export formats there are ninety
+// combinations, and trying a few of them used to mean re-downloading all
+// six photos every single time. The images are immutable once uploaded, so
+// they're kept after the first decode and reused.
+// Holds { image, objectUrl } so the blob URL's lifetime is tied to the
+// cache entry rather than being revoked the instant the image decodes.
+// Revoking early would risk a permanently broken image if the browser ever
+// dropped the decoded bitmap and tried to re-fetch the source.
+const imageCache = new Map();
+
+// Called when leaving a booth, so photos from one room don't sit in memory
+// while you're in another.
+export function clearCollageImageCache() {
+  imageCache.forEach((entry) => URL.revokeObjectURL(entry.objectUrl));
+  imageCache.clear();
+}
+
+async function loadImageFromUrl(url, cacheKey = url) {
   if (!url) {
     throw new Error('Missing photo download URL.');
   }
 
+  const cached = imageCache.get(cacheKey);
+  if (cached) return cached.image;
+
   let response;
 
   try {
-    response = await fetch(url, {
-      method: 'GET',
-      mode: 'cors',
-      cache: 'no-store'
-    });
+    response = await fetch(url, { method: 'GET', mode: 'cors' });
   } catch (error) {
     throw new Error('Could not fetch one uploaded photo from Firebase Storage. This is most likely a Storage CORS issue.');
   }
@@ -768,27 +787,43 @@ async function loadImageFromUrl(url) {
   const blob = await response.blob();
   const objectUrl = URL.createObjectURL(blob);
 
-  return new Promise((resolve, reject) => {
-    const image = new Image();
+  let image;
 
-    image.onload = () => {
-      resolve(image);
-    };
+  try {
+    image = await new Promise((resolve, reject) => {
+      const element = new Image();
 
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Could not decode one uploaded photo as an image.'));
-    };
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('Could not decode one uploaded photo as an image.'));
 
-    image.src = objectUrl;
-  });
+      element.src = objectUrl;
+    });
+  } catch (error) {
+    // Nothing will ever reference this URL now, so release it here rather
+    // than leaving it dangling — the failure path used to be the *only*
+    // place this happened.
+    URL.revokeObjectURL(objectUrl);
+    throw error;
+  }
+
+  imageCache.set(cacheKey, { image, objectUrl });
+  return image;
+}
+
+// A retaken photo overwrites the same storage path, so its download URL is
+// not a safe cache key on its own — a stale image could be served for a
+// slot that was just replaced. Pairing the URL with the document's write
+// time guarantees a replacement always misses the cache.
+function photoCacheKey(photo) {
+  const stamp = photo.createdAt?.toMillis?.() ?? photo.createdAt?.seconds ?? '';
+  return `${photo.downloadUrl}|${stamp}`;
 }
 
 async function loadOwnerItems(photos) {
   // Loaded sequentially, not all at once. This is more stable on mobile.
   const items = [];
   for (const photo of photos) {
-    const image = await loadImageFromUrl(photo.downloadUrl);
+    const image = await loadImageFromUrl(photo.downloadUrl, photoCacheKey(photo));
     items.push({ image, caption: photo.caption || '' });
   }
   return items;

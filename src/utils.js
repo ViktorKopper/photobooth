@@ -69,13 +69,21 @@ export function daysTogether(anniversaryDate, referenceDate = new Date()) {
   const start = new Date(`${anniversaryDate}T00:00:00`);
   if (Number.isNaN(start.getTime())) return null;
 
-  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
-  const diffMs = today.getTime() - startDay.getTime();
+  // Both ends are projected onto a UTC midnight before subtracting.
+  // Measuring between two *local* midnights looks equivalent but isn't: a
+  // clock change between the two dates makes one of them 23 or 25 hours
+  // long, the division floors a day early, and the count sits one behind
+  // for the whole of summer time.
+  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const todayUtc = Date.UTC(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+    referenceDate.getDate()
+  );
 
-  if (diffMs < 0) return null;
+  if (todayUtc < startUtc) return null;
 
-  return Math.floor(diffMs / 86400000) + 1;
+  return Math.round((todayUtc - startUtc) / 86400000) + 1;
 }
 
 // Great-circle distance between two points, in kilometres. Uses the mean
