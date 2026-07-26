@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { COLLAGE_THEMES, EXPORT_PRESETS } from '../collage.js';
 import { FILTERS } from '../filters.js';
 import { POSE_PROMPTS } from '../prompts.js';
+import { ROOM_TTL_DAYS } from '../config.js';
 import { MAX_STICKERS, STICKERS } from '../stickers.js';
 import { buildGuidePanel, wireGuidePanel } from './guide.js';
 
@@ -232,9 +233,19 @@ describe('content', () => {
   });
 
   it('is honest about the two-day cleanup', () => {
+    // This claimed rooms expired long before they actually did — the Storage
+    // rule swept the photos and the room document stayed forever. Pinned to the
+    // real constant now, so the two cannot drift apart again.
     const text = bodyFor('privacy').textContent;
-    expect(text).toMatch(/two days/);
+    expect(text).toMatch(new RegExp(`${ROOM_TTL_DAYS} days`));
     expect(text).toMatch(/collages are kept/i);
+  });
+
+  it('says what actually does the deleting', () => {
+    // Two separate mechanisms, and neither is obvious from the outside.
+    const text = bodyFor('privacy').textContent;
+    expect(text).toMatch(/storage rule/i);
+    expect(text).toMatch(/Firestore/);
   });
 
   it('explains the three ways to decorate a photo', () => {

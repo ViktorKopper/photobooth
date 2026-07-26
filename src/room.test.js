@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ROOM_TTL_DAYS } from './config.js';
 import { SERVER_TIMESTAMP } from './test/firebase-fake.js';
 
 vi.mock('./firebase.js', () => ({ app: {} }));
@@ -123,6 +124,25 @@ describe('createRoom', () => {
     expect(room.participants.viktor.location).toBeNull();
   });
 
+  it('stamps an expiry, so the room does not outlive its photos', async () => {
+    // The Storage lifecycle rule swept the photos after two days and the room
+    // document — with both cities in it — stayed forever. The guide claimed
+    // otherwise the whole time.
+    const roomId = await createRoom({ uid: V_UID, role: 'viktor', customMessage: '' });
+    const expiresAt = fake.read(`rooms/${roomId}`).expiresAt;
+
+    expect(expiresAt instanceof Date).toBe(true);
+    const days = (expiresAt.getTime() - Date.now()) / 86400000;
+    expect(days).toBeCloseTo(ROOM_TTL_DAYS, 1);
+  });
+
+  it('writes a real date, not a server sentinel', async () => {
+    // Firestore's TTL service reads an actual timestamp, and a sentinel cannot
+    // be added to — this is the one place a few seconds of clock skew is fine.
+    const roomId = await createRoom({ uid: V_UID, role: 'viktor', customMessage: '' });
+    expect(fake.read(`rooms/${roomId}`).expiresAt).not.toBe(SERVER_TIMESTAMP);
+  });
+
   it('normalises a missing anniversary to null rather than undefined', async () => {
     // Firestore rejects undefined outright, and the rules check for null.
     const roomId = await createRoom({ uid: V_UID, role: 'viktor', customMessage: '' });
@@ -181,6 +201,16 @@ describe('joinRoom', () => {
     seedRoom({ jericka: participant(J_UID, { location: BRATISLAVA }) });
     await joinRoom({ roomId: ROOM, uid: J_UID, role: 'jericka', location: berlin });
     expect(fake.read(ROOM_PATH).participants.jericka.location.name).toBe('Berlin');
+  });
+
+  it('pushes the expiry out again when the second person arrives', async () => {
+    // A booth created the night before should not be half-expired by the time
+    // she opens the link.
+    seedRoom({ viktor: participant(V_UID), jericka: blank(), expiresAt: new Date(Date.now() + 1000) });
+    await joinRoom({ roomId: ROOM, uid: J_UID, role: 'jericka' });
+
+    const days = (fake.read(ROOM_PATH).expiresAt.getTime() - Date.now()) / 86400000;
+    expect(days).toBeCloseTo(ROOM_TTL_DAYS, 1);
   });
 
   it('writes only its own participant subtree, not the whole map', async () => {

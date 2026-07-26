@@ -1102,6 +1102,25 @@ p {
   vertical-align: -0.15em;
 }
 
+/* ------------------------------------------------------------- offline */
+
+.offline-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--danger-text);
+  border-radius: 0;
+  background: var(--note-bg);
+  color: var(--danger-text);
+  font-size: var(--fs-xs);
+}
+
+.offline-notice .icon {
+  flex: 0 0 auto;
+}
+
 /* ------------------------------------------------------------ her presence */
 
 .status-head {

@@ -40,6 +40,7 @@ import { buildStickerSheet } from '../features/stickerLayer.js';
 import { sendPokeFlow } from '../features/poke.js';
 import { renderPoseCard } from '../features/poseCard.js';
 import { isHereNow, schedulePresenceExpiry } from '../features/presence.js';
+import { isOffline } from '../features/connection.js';
 import { burstNewReactions } from '../features/reactionBurst.js';
 import { deleteSessionFlow, leaveBooth } from '../features/session.js';
 import { isShootingNow, requestSyncFlow } from '../features/sync.js';
@@ -97,6 +98,7 @@ export function renderRoomShell() {
           </div>
           <p>You are connected as <strong>${escapeHtml(roleName)}</strong>.</p>
           <p id="anniversaryLine" class="anniversary-line hidden"></p>
+          <p id="offlineNotice" class="offline-notice hidden" role="status"></p>
           <div id="distancePanel" class="distance-panel hidden"></div>
           <div class="status-actions">
             <button type="button" class="secondary small" id="pokeBtn" title="Send a little heart">${ICONS.heart} Thinking of you</button>
@@ -319,9 +321,6 @@ function wireRoomShell() {
 
   document.querySelector('#captionEditorCancelBtn').addEventListener('click', closeCaptionEditor);
   document.querySelector('#captionEditorSaveBtn').addEventListener('click', saveCaptionEditor);
-  document.querySelector('#captionEditorOverlay').addEventListener('click', (event) => {
-    if (event.target.id === 'captionEditorOverlay') closeCaptionEditor();
-  });
 }
 
 // Rendered locally rather than through any QR web service on purpose: the room
@@ -368,6 +367,7 @@ export function updateRoomView() {
   // After the thumbnails exist, so a burst has something to launch from.
   burstNewReactions(state.photos, state.role);
   renderPresenceChip();
+  renderOfflineNotice();
   renderPoseCard();
   celebrateIfJustCompleted(bothComplete);
   renderRoomMessage(bothComplete);
@@ -378,6 +378,23 @@ export function updateRoomView() {
 
 // Her light, on the whole time she has the booth open — not just for the two
 // seconds of a countdown.
+// Said plainly, because losing wifi mid-shoot otherwise surfaces as whatever
+// Firebase happens to throw — usually something about a deadline, which tells
+// you nothing about the actual problem.
+//
+// Worded as an observation rather than a verdict: navigator.onLine reports the
+// state of the network interface, not whether anything is actually reachable.
+function renderOfflineNotice() {
+  const notice = document.querySelector('#offlineNotice');
+  if (!notice) return;
+
+  const offline = isOffline();
+  notice.classList.toggle('hidden', !offline);
+  if (offline) {
+    notice.innerHTML = `${ICONS.bellOff} You're offline — photos and hearts will send once you're back.`;
+  }
+}
+
 function renderPresenceChip() {
   const chip = document.querySelector('#presenceChip');
   if (!chip) return;

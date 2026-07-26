@@ -40,6 +40,11 @@ export const PRESENCE_PING_MS = 40000;
 // briefly asleep, so the light doesn't flicker.
 export const PRESENCE_WINDOW_MS = 110000;
 
+// How long a booth lives. Matches the Storage lifecycle rule exactly, so the
+// photos and the room document they belong to disappear together rather than
+// leaving one orphaned by the other.
+export const ROOM_TTL_DAYS = 2;
+
 // A poke older than this is history, not a nudge. Opening a booth to hearts
 // someone sent last night would misrepresent when they were thinking of you.
 export const POKE_FRESH_MS = 60000;

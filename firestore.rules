@@ -82,6 +82,7 @@ service cloud.firestore {
       return data.keys().hasOnly([
         'createdAt',
         'updatedAt',
+        'expiresAt',
         'status',
         'createdBy',
         'title',
@@ -109,6 +110,10 @@ service cloud.firestore {
         && data.participants.jericka.photoCount <= 3
         && data.customMessage is string
         && data.customMessage.size() <= 80
+        // Optional — rooms created before the TTL policy existed have no such
+        // field, and are left to be cleared by hand. A timestamp when present,
+        // because that is what Firestore's TTL service reads.
+        && (!('expiresAt' in data) || data.expiresAt is timestamp)
         // Optional — older rooms were created before this field existed.
         && (!('anniversaryDate' in data) || data.anniversaryDate == null || (
           data.anniversaryDate is string && data.anniversaryDate.size() <= 10

@@ -22,6 +22,7 @@ import {
   uploadBytes
 } from 'firebase/storage';
 import { app } from './firebase.js';
+import { ROOM_TTL_DAYS } from './config.js';
 import { generateRoomId, ROLES } from './utils.js';
 
 const db = getFirestore(app);
@@ -65,6 +66,21 @@ async function assertParticipant({ roomId, uid, role, room }) {
   return data;
 }
 
+// When this room should stop existing.
+//
+// Firestore's TTL service reads a real timestamp field and deletes the document
+// once it passes — there is no rule-based expiry, so the date has to be written
+// by the client. Computed locally rather than with serverTimestamp() because a
+// sentinel cannot be added to: this is the one place a clock skew of a few
+// seconds genuinely does not matter.
+//
+// Until this existed, the Storage lifecycle rule swept the photos after two
+// days and the room document — with both your cities in it — stayed forever.
+// The guide has been claiming otherwise the whole time.
+function expiryFromNow() {
+  return new Date(Date.now() + ROOM_TTL_DAYS * 86400000);
+}
+
 function blankParticipant() {
   return {
     uid: null,
@@ -99,6 +115,7 @@ export async function createRoom({ uid, role, customMessage, anniversaryDate = n
   await setDoc(doc(db, 'rooms', roomId), {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    expiresAt: expiryFromNow(),
     status: 'waiting',
     createdBy: uid,
     title: 'Viktor & Jericka Photobooth',
@@ -141,6 +158,9 @@ export async function joinRoom({ roomId, uid, role, location = null }) {
     // has one to offer, so rejoining without re-picking never wipes it.
     [`participants.${role}.location`]: location || participant?.location || null,
     updatedAt: serverTimestamp(),
+    // Pushed out again when the second person arrives, so a booth created the
+    // night before is not half-expired by the time she opens the link.
+    expiresAt: expiryFromNow(),
     status: nextStatus
   });
 }

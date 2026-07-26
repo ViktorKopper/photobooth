@@ -11,7 +11,7 @@
 // controls use, so adding a theme can't leave the guide describing four.
 
 import { COLLAGE_THEMES, EXPORT_PRESETS } from '../collage.js';
-import { PRESENCE_WINDOW_MS, TIMER_OPTIONS } from '../config.js';
+import { PRESENCE_WINDOW_MS, ROOM_TTL_DAYS, TIMER_OPTIONS } from '../config.js';
 import { FILTERS } from '../filters.js';
 import { POSE_PROMPTS } from '../prompts.js';
 import { MAX_STICKERS, STICKERS } from '../stickers.js';
@@ -297,7 +297,7 @@ function privacy() {
       ${row({
         icon: ICONS.timer,
         term: 'Two-day cleanup',
-        note: 'Photos and rooms are deleted automatically after two days. Saved collages are kept.'
+        note: `Photos and the booth itself are deleted automatically ${ROOM_TTL_DAYS} days after the second of you joins — the files by a storage rule, the room by Firestore's own expiry. Saved collages are kept.`
       })}
       ${row({
         icon: ICONS.refresh,

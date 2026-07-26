@@ -33,6 +33,7 @@ import {
   stickerLayerMarkup
 } from './stickerLayer.js';
 import { state } from '../store.js';
+import { createModal } from '../ui/modal.js';
 import { restartAnimation } from '../ui/motion.js';
 import { showError, showToast } from '../ui/toast.js';
 import { otherRole, ROLES } from '../utils.js';
@@ -50,6 +51,7 @@ let mode = 'draw';
 // Set when a stroke was actually refused, so the notice appears at the moment
 // something was really lost rather than on a guess.
 let full = false;
+let modal = null;
 
 const surface = () => document.querySelector('#doodleSurface');
 const myPathEl = () => document.querySelector('#doodleMine');
@@ -121,7 +123,7 @@ export function openDoodleEditor(ownerRole, index) {
   document.querySelector('#stickerLayer').innerHTML = stickerLayerMarkup();
   setMode('draw');
 
-  overlay.classList.remove('hidden');
+  modal?.open();
   restartAnimation(overlay);
   restartAnimation(overlay.querySelector('.doodle-card'));
 
@@ -134,7 +136,9 @@ export function closeDoodleEditor() {
   active = null;
   undoStack = [];
   clearStickers();
-  document.querySelector('#doodleOverlay')?.classList.add('hidden');
+
+  if (modal) modal.close();
+  else document.querySelector('#doodleOverlay')?.classList.add('hidden');
 }
 
 export function isDoodling() {
@@ -298,6 +302,11 @@ export function wireDoodleEditor() {
   if (!overlay || overlay.dataset.doodleWired === 'true') return;
   overlay.dataset.doodleWired = 'true';
 
+  modal = createModal(overlay, {
+    label: 'Decorate this photo',
+    onClose: closeDoodleEditor
+  });
+
   const pad = surface();
   pad.addEventListener('pointerdown', onPointerDown);
   pad.addEventListener('pointermove', onPointerMove);
@@ -328,8 +337,4 @@ export function wireDoodleEditor() {
   document.querySelector('#doodleClearBtn').addEventListener('click', clearAll);
   document.querySelector('#doodleSaveBtn').addEventListener('click', save);
   document.querySelector('#doodleCancelBtn').addEventListener('click', closeDoodleEditor);
-
-  overlay.addEventListener('click', (event) => {
-    if (event.target.id === 'doodleOverlay') closeDoodleEditor();
-  });
 }

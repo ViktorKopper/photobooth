@@ -18,6 +18,7 @@ import {
 } from './handwriting.js';
 import { roomApi } from '../roomApi.js';
 import { state } from '../store.js';
+import { createModal } from '../ui/modal.js';
 import { restartAnimation } from '../ui/motion.js';
 import { showError, showToast } from '../ui/toast.js';
 import { sanitizeCaption } from '../utils.js';
@@ -115,10 +116,20 @@ function onPadMove(event) {
   if (point) extendStroke(point);
 }
 
+// Built once with the room shell, opened many times.
+let captionModal = null;
+
 export function wireCaptionEditor() {
   const panel = document.querySelector('#captionWritePanel');
   if (!panel || panel.dataset.wired === 'true') return;
   panel.dataset.wired = 'true';
+
+  captionModal = createModal(document.querySelector('#captionEditorOverlay'), {
+    label: 'Edit photo caption',
+    onClose: () => {
+      state.editingCaption = null;
+    }
+  });
 
   document.querySelectorAll('[data-caption-mode]').forEach((tab) => {
     tab.addEventListener('click', () => setCaptionMode(tab.dataset.captionMode));
@@ -159,7 +170,9 @@ export function openCaptionEditor(role, index) {
   setCaptionMode(photo.handwriting ? 'write' : 'type');
   repaintHandwriting();
 
-  overlay.classList.remove('hidden');
+  // Focused on the field rather than the first control, which is the mode
+  // toggle — you came here to write something.
+  captionModal?.open({ focus: input });
 
   // The overlay is toggled with display:none, and a CSS animation won't replay
   // on an element that was merely un-hidden. Nudging it off and on (with a
@@ -173,7 +186,9 @@ export function openCaptionEditor(role, index) {
 
 export function closeCaptionEditor() {
   state.editingCaption = null;
-  document.querySelector('#captionEditorOverlay')?.classList.add('hidden');
+
+  if (captionModal) captionModal.close();
+  else document.querySelector('#captionEditorOverlay')?.classList.add('hidden');
 }
 
 export async function saveCaptionEditor() {
