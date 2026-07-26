@@ -16,6 +16,7 @@ import {
   togetherLine,
   weatherChip
 } from './screens/parts.js';
+import { createCityPicker } from './ui/cityPicker.js';
 import { escapeAttr, escapeHtml } from './ui/html.js';
 import { celebrateCompletion, playShutterSound, triggerShutterFeedback } from './ui/feedback.js';
 import { countUp, prefersReducedMotion, restartAnimation } from './ui/motion.js';
@@ -104,8 +105,8 @@ const state = {
   onionSkinOn: false,
   customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
   myLocation: readStoredLocation(),
-  citySearchResults: [],
-  citySearchToken: 0,
+  // The live city picker, so a re-render can tear the previous one down.
+  cityPicker: null,
   collageBlob: null,
   collagePreviewUrl: null,
   collageLayout: 'grid',
@@ -382,20 +383,14 @@ function cityPreviewText() {
   return `${ICONS.pin} ${escapeHtml(describeLocation(state.myLocation))}${clock}`;
 }
 
-// Debounced city search with a monotonically increasing token, so a slow
-// earlier request can never overwrite the results of a newer keystroke.
+// Mounts the city autocomplete on whichever screen is currently up. The
+// picker itself lives in ui/cityPicker.js and knows nothing about `state`;
+// this is the adapter that connects the two.
 function wireCityPicker(onChange = () => {}) {
   const input = document.querySelector('#cityInput');
   const results = document.querySelector('#cityResults');
   const preview = document.querySelector('#cityPreview');
   if (!input || !results) return;
-
-  let debounce = null;
-
-  const closeResults = () => {
-    results.classList.add('hidden');
-    results.innerHTML = '';
-  };
 
   const refreshPreview = () => {
     // innerHTML: the line carries a drawn pin and sun/moon icon. The city
@@ -405,76 +400,27 @@ function wireCityPicker(onChange = () => {}) {
     onChange();
   };
 
-  input.addEventListener('input', () => {
-    const query = input.value.trim();
+  // Both screens that host a picker can be re-rendered (leaving a booth
+  // returns to the landing page), and the previous instance is holding a
+  // document-level listener pointed at a DOM that no longer exists.
+  state.cityPicker?.destroy();
 
-    // Typing again after picking invalidates the stored pick until a new
-    // suggestion is chosen — otherwise a half-typed city would silently
-    // keep the previous coordinates.
-    if (state.myLocation && query !== describeLocation(state.myLocation)) {
+  state.cityPicker = createCityPicker({
+    input,
+    results,
+    search: searchCities,
+    describeResult: describeSearchResult,
+    describeSelection: describeLocation,
+    getSelection: () => state.myLocation,
+    onPick: (picked) => {
+      storeMyLocation(picked);
+      refreshPreview();
+    },
+    onClear: () => {
       storeMyLocation(null);
       refreshPreview();
     }
-
-    window.clearTimeout(debounce);
-
-    if (query.length < 2) {
-      closeResults();
-      return;
-    }
-
-    debounce = window.setTimeout(async () => {
-      const token = ++state.citySearchToken;
-      results.classList.remove('hidden');
-      results.innerHTML = '<div class="city-result-empty">Searching...</div>';
-
-      try {
-        const found = await searchCities(query);
-        if (token !== state.citySearchToken) return;
-
-        state.citySearchResults = found;
-
-        if (!found.length) {
-          results.innerHTML = '<div class="city-result-empty">No cities found.</div>';
-          return;
-        }
-
-        results.innerHTML = found
-          .map(
-            (item, index) =>
-              `<button type="button" class="city-result" data-index="${index}">${escapeHtml(describeSearchResult(item))}</button>`
-          )
-          .join('');
-      } catch {
-        if (token !== state.citySearchToken) return;
-        results.innerHTML = '<div class="city-result-empty">City lookup unavailable right now.</div>';
-      }
-    }, 300);
   });
-
-  results.addEventListener('click', (event) => {
-    const button = event.target.closest('.city-result');
-    if (!button) return;
-
-    const picked = state.citySearchResults[Number(button.dataset.index)];
-    if (!picked) return;
-
-    storeMyLocation(picked);
-    input.value = describeLocation(state.myLocation);
-    closeResults();
-    refreshPreview();
-  });
-
-  // renderLanding() can run repeatedly (leaving a room returns here), so the
-  // previous document-level handler is detached first — otherwise every
-  // visit would stack another listener holding a stale DOM reference.
-  if (wireCityPicker.outsideHandler) {
-    document.removeEventListener('click', wireCityPicker.outsideHandler);
-  }
-  wireCityPicker.outsideHandler = (event) => {
-    if (!event.target.closest('.city-picker')) closeResults();
-  };
-  document.addEventListener('click', wireCityPicker.outsideHandler);
 }
 
 export function renderJoinByCode() {

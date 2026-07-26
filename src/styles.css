@@ -511,7 +511,10 @@ p {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  overflow: hidden;
+  /* Scrollable now that arrow keys can walk past the fold. */
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   background: var(--paper-raised);
@@ -541,7 +544,17 @@ p {
   font-size: var(--fs-sm);
 }
 
-.city-result:hover {
+.city-result {
+  cursor: pointer;
+  /* Dragging across the list to read it shouldn't select its text. */
+  user-select: none;
+}
+
+/* Hover and keyboard highlight are deliberately the same thing: the picker
+   syncs the active option to the pointer, so two competing highlights can
+   never appear at once. */
+.city-result:hover,
+.city-result-active {
   background: var(--hover-bg);
 }
 

@@ -118,6 +118,15 @@ describe('renderLanding', () => {
     renderLanding();
     expect($$('#createBtn')).toHaveLength(1);
   });
+
+  it('wires the city field up as a keyboard-operable combobox', () => {
+    // The picker has its own suite; this only proves the screen actually
+    // mounts it, which a unit test of the picker cannot show.
+    renderLanding();
+    expect($('#cityInput').getAttribute('role')).toBe('combobox');
+    expect($('#cityInput').getAttribute('aria-controls')).toBe('cityResults');
+    expect($('#cityResults').getAttribute('role')).toBe('listbox');
+  });
 });
 
 describe('renderJoinByCode', () => {
@@ -192,5 +201,13 @@ describe('renderLocationGate', () => {
     expect($('#backBtn')).not.toBeNull();
     $('#backBtn').click();
     expect($$('.role-card')).toHaveLength(2);
+  });
+
+  it('mounts a keyboard-operable city field here too', () => {
+    // This gate is the only place someone arriving from a shared link is
+    // ever asked for a city, so it not being keyboard-operable would lock
+    // them out of the app entirely.
+    expect($('#cityInput').getAttribute('role')).toBe('combobox');
+    expect($('#cityResults').getAttribute('role')).toBe('listbox');
   });
 });
