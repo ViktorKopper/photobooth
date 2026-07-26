@@ -89,6 +89,8 @@ service cloud.firestore {
         'anniversaryDate',
         'syncCountdown',
         'collage',
+        'poke',
+        'posePrompt',
         'participants'
       ]);
     }
@@ -125,6 +127,29 @@ service cloud.firestore {
             && data.syncCountdown.seconds >= 1
             && data.syncCountdown.seconds <= 30
           ))
+        ))
+        // Optional — a contentless nudge. Overwritten on each send and never
+        // cleared; the receiving client dedupes on the timestamp and ignores
+        // anything stale, so there is no state here worth protecting beyond
+        // the shape.
+        && (!('poke' in data) || data.poke == null || (
+          data.poke is map
+          && data.poke.keys().hasOnly(['from', 'at'])
+          && data.poke.from in ['viktor', 'jericka']
+          && data.poke.at is timestamp
+        ))
+        // Optional — the shared pose card. Only the id travels; the wording
+        // lives in the client, which is why this is capped at a short string
+        // rather than being validated against a list the rules would have to
+        // be redeployed to change.
+        && (!('posePrompt' in data) || data.posePrompt == null || (
+          data.posePrompt is map
+          && data.posePrompt.keys().hasOnly(['id', 'dealtBy', 'dealtAt'])
+          && data.posePrompt.id is string
+          && data.posePrompt.id.size() > 0
+          && data.posePrompt.id.size() <= 40
+          && data.posePrompt.dealtBy in ['viktor', 'jericka']
+          && data.posePrompt.dealtAt is timestamp
         ))
         // Optional — only set once someone publishes a collage to the room.
         && (!('collage' in data) || data.collage == null || (

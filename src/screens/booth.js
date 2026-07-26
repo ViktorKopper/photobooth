@@ -34,6 +34,10 @@ import {
   swapPhotosFlow,
   toggleReactionFlow
 } from '../features/photos.js';
+import { sendPokeFlow } from '../features/poke.js';
+import { renderPoseCard } from '../features/poseCard.js';
+import { isHereNow, schedulePresenceExpiry } from '../features/presence.js';
+import { burstNewReactions } from '../features/reactionBurst.js';
 import { deleteSessionFlow, leaveBooth } from '../features/session.js';
 import { isShootingNow, requestSyncFlow } from '../features/sync.js';
 import { weather } from '../features/weather.js';
@@ -84,11 +88,17 @@ export function renderRoomShell() {
 
       <section class="grid-layout">
         <aside class="card status-card">
-          <h2>Booth status</h2>
+          <div class="status-head">
+            <h2>Booth status</h2>
+            <span id="presenceChip" class="presence-chip hidden"></span>
+          </div>
           <p>You are connected as <strong>${escapeHtml(roleName)}</strong>.</p>
           <p id="anniversaryLine" class="anniversary-line hidden"></p>
           <div id="distancePanel" class="distance-panel hidden"></div>
-          <button type="button" class="secondary small" id="notifyToggleBtn">${ICONS.bell} Enable notifications</button>
+          <div class="status-actions">
+            <button type="button" class="secondary small" id="pokeBtn" title="Send a little heart">${ICONS.heart} Thinking of you</button>
+            <button type="button" class="secondary small" id="notifyToggleBtn">${ICONS.bell} Enable notifications</button>
+          </div>
           <p class="notify-hint">Only arrive while the booth is open on screen — a closed app can't wake itself up.</p>
 
           <div class="share-box">
@@ -150,6 +160,7 @@ export function renderRoomShell() {
             <button class="ghost hidden" id="cancelReplaceBtn">Cancel retake</button>
           </div>
           <p id="syncStatus" class="sync-status hidden"></p>
+          <div id="poseCard"></div>
         </section>
 
         ${buildGuidePanel()}
@@ -222,6 +233,7 @@ function wireRoomShell() {
   document.querySelector('#syncBtn').addEventListener('click', requestSyncFlow);
   document.querySelector('#cancelReplaceBtn').addEventListener('click', cancelReplacingPhoto);
 
+  document.querySelector('#pokeBtn').addEventListener('click', sendPokeFlow);
   document.querySelector('#notifyToggleBtn').addEventListener('click', requestNotificationPermissionFlow);
   renderNotifyToggle(document.querySelector('#notifyToggleBtn'));
 
@@ -295,11 +307,32 @@ export function updateRoomView() {
   const bothComplete = viktorCount >= 3 && jerickaCount >= 3;
 
   renderProgressPanel(viktorCount, jerickaCount);
+  // After the thumbnails exist, so a burst has something to launch from.
+  burstNewReactions(state.photos, state.role);
+  renderPresenceChip();
+  renderPoseCard();
   celebrateIfJustCompleted(bothComplete);
   renderRoomMessage(bothComplete);
   renderCameraControls();
   renderOnionSkin();
   renderCollageSection(bothComplete);
+}
+
+// Her light, on the whole time she has the booth open — not just for the two
+// seconds of a countdown.
+function renderPresenceChip() {
+  const chip = document.querySelector('#presenceChip');
+  if (!chip) return;
+
+  const theirRole = otherRole(state.role);
+  const here = isHereNow(state.room.participants?.[theirRole]?.lastActiveAt);
+
+  chip.classList.toggle('hidden', !here);
+  if (here) chip.innerHTML = `<span class="presence-dot"></span>${escapeHtml(ROLES[theirRole].name)} is here`;
+
+  // The stamp ages on a clock rather than on a write, so nothing else would
+  // ever turn this off.
+  schedulePresenceExpiry(here);
 }
 
 function renderAnniversaryLine() {

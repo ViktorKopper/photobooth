@@ -30,6 +30,20 @@ export const SHOOTING_WINDOW_MS = 16000;
 // this often. Cheap: it only rewrites one small block.
 export const CLOCK_TICK_MS = 30000;
 
+// How often a browser says "still here". Long enough that a booth left open all
+// evening costs a trivial number of writes; short enough that arriving feels
+// immediate to the other side.
+export const PRESENCE_PING_MS = 40000;
+
+// How stale a heartbeat may get before the other person reads as gone. Wider
+// than the ping interval by enough to survive one dropped write or a phone
+// briefly asleep, so the light doesn't flicker.
+export const PRESENCE_WINDOW_MS = 110000;
+
+// A poke older than this is history, not a nudge. Opening a booth to hearts
+// someone sent last night would misrepresent when they were thinking of you.
+export const POKE_FRESH_MS = 60000;
+
 // Ink colours for each person's handwriting on a photo.
 export const CAPTION_INK = {
   viktor: '#2a5a86',

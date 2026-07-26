@@ -364,6 +364,59 @@ export async function markShooting({ roomId, uid, role, room = null }) {
   });
 }
 
+// "I still have this open."
+//
+// Deliberately the same field joining already stamps, rather than a new one:
+// the rules validate it, older rooms carry it, and the reader treats anything
+// stale as gone — so a browser closed mid-session can't leave the other person
+// looking at a light that never goes out.
+//
+// Fire-and-forget, like markShooting. A failed heartbeat is not worth a word.
+export async function touchPresence({ roomId, uid, role, room = null }) {
+  try {
+    await assertParticipant({ roomId, uid, role, room });
+    await updateDoc(doc(db, 'rooms', roomId), {
+      [`participants.${role}.lastActiveAt`]: serverTimestamp()
+      // Deliberately does NOT bump `updatedAt`: a heartbeat every 40 seconds
+      // is not activity in the booth, and letting it count as such would make
+      // the two-day cleanup think an abandoned tab is a live room.
+    });
+  } catch {
+    // Offline, or not a participant. Either way the indicator going quiet is
+    // the correct outcome.
+  }
+}
+
+// A nudge with no content. Overwritten on each send; the receiving side
+// dedupes on the timestamp, so nothing has to be cleared afterwards.
+export async function sendPoke({ roomId, uid, role, room = null }) {
+  await assertParticipant({ roomId, uid, role, room });
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    poke: { from: role, at: serverTimestamp() },
+    updatedAt: serverTimestamp()
+  });
+}
+
+// Deals a pose card to the room, so both of you are looking at the same one.
+// Only the id travels — the text lives in the client, which keeps the write
+// tiny and means the wording can be improved later without rewriting history.
+export async function dealPosePrompt({ roomId, uid, role, promptId, room = null }) {
+  await assertParticipant({ roomId, uid, role, room });
+
+  await updateDoc(doc(db, 'rooms', roomId), {
+    posePrompt: { id: String(promptId), dealtBy: role, dealtAt: serverTimestamp() },
+    updatedAt: serverTimestamp()
+  });
+}
+
+export async function clearPosePrompt(roomId) {
+  await updateDoc(doc(db, 'rooms', roomId), {
+    posePrompt: null,
+    updatedAt: serverTimestamp()
+  }).catch(() => undefined);
+}
+
 export async function clearSyncCountdown(roomId) {
   await updateDoc(doc(db, 'rooms', roomId), {
     syncCountdown: null,

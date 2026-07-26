@@ -12,10 +12,15 @@ import { roomApi } from '../roomApi.js';
 import { expiredRoomIds, forgetAllRooms, forgetRoom, listRooms, rememberRoom } from '../roomHistory.js';
 import { requestRender, state } from '../store.js';
 import { stopCamera } from '../camera.js';
+import { clearBursts } from '../ui/burst.js';
 import { renderFatalError, renderLoading } from '../screens/system.js';
 import { showError, showToast } from '../ui/toast.js';
 import { isUsableLocation, sanitizeCollageMessage, sanitizeLocation } from '../utils.js';
 import { startCurrentCamera } from './capture.js';
+import { handlePokeChange, resetPokeHistory } from './poke.js';
+import { resetPoseCardHistory } from './poseCard.js';
+import { startPresenceHeartbeat, stopPresenceExpiry, stopPresenceHeartbeat } from './presence.js';
+import { resetReactionHistory } from './reactionBurst.js';
 import { clearSyncTimers, handleSyncCountdownChange } from './sync.js';
 import { startClockTicker, stopClockTicker } from './tickers.js';
 import { weather } from './weather.js';
@@ -97,6 +102,7 @@ async function enterRoom() {
         return;
       }
       handleSyncCountdownChange();
+      handlePokeChange();
       requestRender();
     },
     renderFatalError
@@ -112,6 +118,7 @@ async function enterRoom() {
   );
 
   startClockTicker();
+  startPresenceHeartbeat();
   syncMyLocationToRoom();
 
   await startCurrentCamera();
@@ -148,6 +155,15 @@ export function stopSubscriptions() {
   clearSyncTimers();
   window.clearTimeout(state.shootingTimer);
   stopClockTicker();
+  stopPresenceHeartbeat();
+  stopPresenceExpiry();
+  clearBursts();
+
+  // These three track "what had I already seen" across snapshots. Carried into
+  // the next booth they would replay its history as if it were live.
+  resetPokeHistory();
+  resetReactionHistory();
+  resetPoseCardHistory();
   // Also clears its cache and signature, so re-entering a room fetches fresh
   // conditions rather than matching a stale key and skipping the lookup.
   weather.stop();

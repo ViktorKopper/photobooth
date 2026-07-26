@@ -17,6 +17,10 @@ const {
   requestSyncCountdown,
   markShooting,
   clearSyncCountdown,
+  touchPresence,
+  sendPoke,
+  dealPosePrompt,
+  clearPosePrompt,
   publishCollage,
   deleteRoomSession,
   watchPhotos
@@ -537,6 +541,127 @@ describe('requestSyncCountdown', () => {
 
   it('swallows a failed clear rather than surfacing it mid-shoot', async () => {
     await expect(clearSyncCountdown('GONE')).resolves.toBeUndefined();
+  });
+});
+
+describe('touchPresence', () => {
+  it('stamps the caller as still here', async () => {
+    const room = seedRoom();
+    await touchPresence({ roomId: ROOM, uid: V_UID, role: 'viktor', room });
+    expect(fake.read(ROOM_PATH).participants.viktor.lastActiveAt).toBe(SERVER_TIMESTAMP);
+  });
+
+  it('reuses the field joining already stamps, rather than adding one', async () => {
+    // The rules validate lastActiveAt and older rooms carry it, so presence
+    // needed no schema change at all.
+    const room = seedRoom();
+    await touchPresence({ roomId: ROOM, uid: V_UID, role: 'viktor', room });
+    expect(Object.keys(lastWriteTo(ROOM_PATH).data)).toEqual(['participants.viktor.lastActiveAt']);
+  });
+
+  it('does not count as activity in the booth', async () => {
+    // A heartbeat every 40 seconds must not bump updatedAt, or an abandoned
+    // tab would keep the two-day cleanup from ever collecting the room.
+    const room = seedRoom();
+    await touchPresence({ roomId: ROOM, uid: V_UID, role: 'viktor', room });
+    expect(Object.keys(lastWriteTo(ROOM_PATH).data)).not.toContain('updatedAt');
+  });
+
+  it('stays silent when it cannot write', async () => {
+    // Going quiet is the correct outcome; a failed heartbeat is not worth a word.
+    const room = seedRoom();
+    await expect(
+      touchPresence({ roomId: ROOM, uid: 'impostor', role: 'viktor', room })
+    ).resolves.toBeUndefined();
+    expect(lastWriteTo(ROOM_PATH)).toBeUndefined();
+  });
+
+  it('survives the room being gone', async () => {
+    await expect(
+      touchPresence({ roomId: 'GONE', uid: V_UID, role: 'viktor' })
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('sendPoke', () => {
+  const poke = (extra = {}) =>
+    sendPoke({ roomId: ROOM, uid: V_UID, role: 'viktor', room: fake.read(ROOM_PATH), ...extra });
+
+  beforeEach(() => seedRoom());
+
+  it('records who sent it and when', async () => {
+    await poke();
+    expect(fake.read(ROOM_PATH).poke).toEqual({ from: 'viktor', at: SERVER_TIMESTAMP });
+  });
+
+  it('carries nothing else — there is no message', async () => {
+    await poke();
+    expect(Object.keys(fake.read(ROOM_PATH).poke)).toEqual(['from', 'at']);
+  });
+
+  it('overwrites the previous one rather than piling up', async () => {
+    await poke();
+    await poke();
+    expect(fake.read(ROOM_PATH).poke.from).toBe('viktor');
+  });
+
+  it('refuses a browser that is not the participant it claims', async () => {
+    await expect(poke({ uid: 'impostor' })).rejects.toThrow(/not connected as this person/);
+  });
+});
+
+describe('dealPosePrompt', () => {
+  const deal = (extra = {}) =>
+    dealPosePrompt({
+      roomId: ROOM,
+      uid: V_UID,
+      role: 'viktor',
+      promptId: 'same-face',
+      room: fake.read(ROOM_PATH),
+      ...extra
+    });
+
+  beforeEach(() => seedRoom());
+
+  it('puts one card on the table for both of you', async () => {
+    await deal();
+    expect(fake.read(ROOM_PATH).posePrompt).toEqual({
+      id: 'same-face',
+      dealtBy: 'viktor',
+      dealtAt: SERVER_TIMESTAMP
+    });
+  });
+
+  it('sends only the id, not the wording', async () => {
+    // Keeps the write tiny, and lets the text be improved later without
+    // rewriting rooms that already exist.
+    await deal();
+    expect(JSON.stringify(fake.read(ROOM_PATH).posePrompt)).not.toMatch(/face\./);
+  });
+
+  it('coerces the id to a string the rules will accept', async () => {
+    await deal({ promptId: 12 });
+    expect(fake.read(ROOM_PATH).posePrompt.id).toBe('12');
+  });
+
+  it('replaces the card rather than dealing a second', async () => {
+    await deal();
+    await deal({ promptId: 'hands' });
+    expect(fake.read(ROOM_PATH).posePrompt.id).toBe('hands');
+  });
+
+  it('is cleared back to null', async () => {
+    await deal();
+    await clearPosePrompt(ROOM);
+    expect(fake.read(ROOM_PATH).posePrompt).toBeNull();
+  });
+
+  it('swallows a failed clear — it is housekeeping', async () => {
+    await expect(clearPosePrompt('GONE')).resolves.toBeUndefined();
+  });
+
+  it('refuses an impostor', async () => {
+    await expect(deal({ uid: 'impostor' })).rejects.toThrow(/not connected as this person/);
   });
 });
 

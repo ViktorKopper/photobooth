@@ -1096,6 +1096,202 @@ p {
   vertical-align: -0.15em;
 }
 
+/* ------------------------------------------------------------ her presence */
+
+.status-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.presence-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--sage-bg);
+  color: var(--sage-deep);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  /* Sage rather than rose on purpose: everything else that pulses in this app
+     is about a photo. This one is about a person being there. */
+  animation: presenceIn var(--dur-base) var(--ease-spring) both;
+}
+
+.presence-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sage-deep);
+  animation: presencePulse 2.4s var(--ease-soft) infinite;
+}
+
+@keyframes presenceIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes presencePulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 var(--sage-bg);
+  }
+  50% {
+    opacity: 0.65;
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.status-actions .secondary.small {
+  flex: 1 1 auto;
+}
+
+/* --------------------------------------------------------- floating hearts */
+
+.burst-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  /* Purely decorative, and must never swallow a tap on what is underneath. */
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.burst-heart {
+  position: absolute;
+  display: block;
+  margin: -9px 0 0 -9px;
+  color: var(--rose);
+  animation: heartFloat var(--ease-soft) both;
+}
+
+.burst-heart-partner {
+  color: var(--jericka);
+}
+
+.burst-heart svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+@keyframes heartFloat {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.4) rotate(0deg);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(calc(var(--drift) * 0.2), calc(var(--rise) * -0.18)) scale(var(--scale));
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--drift), calc(var(--rise) * -1)) scale(calc(var(--scale) * 0.8))
+      rotate(var(--spin));
+  }
+}
+
+/* -------------------------------------------------------------- pose card */
+
+.pose-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  background: var(--note-bg);
+  animation: poseDeal var(--dur-slow) var(--ease-spring) both;
+}
+
+.pose-card-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  animation: none;
+}
+
+.pose-card-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 6px;
+  color: var(--rose);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.pose-card-text {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--fs-md);
+  line-height: 1.35;
+}
+
+.pose-card-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.pose-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.pose-card-empty .pose-card-actions {
+  margin-top: 0;
+}
+
+.pose-card-by {
+  flex: 1 1 auto;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+/* Deals in like a card being turned over onto the table. */
+@keyframes poseDeal {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) rotate(-2.5deg) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pose-card,
+  .presence-chip {
+    animation: none;
+  }
+
+  .presence-dot {
+    animation: none;
+  }
+}
+
 /* ------------------------------------------------- install (home screen) */
 
 .install-tabs {
