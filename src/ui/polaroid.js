@@ -1,28 +1,32 @@
 // The collage coming out of a camera.
 //
 // This sits at the emotional peak of the app — six photos taken apart become
-// one thing you both keep — and the old version of that moment was a button
-// changing its own label. So: a drawn instant camera slides the print out of
-// its slot, and the picture develops on the paper once it is clear.
+// one thing you both keep — so it takes over the screen rather than happening
+// in a corner of a card.
 //
-// Two things make this honest rather than a delay dressed up as a feature.
+// It lives in a fixed overlay, outside #collageSection, for two reasons that
+// are not just presentational. The section rewrites its own innerHTML on every
+// room snapshot, so anything animating inside it gets wiped by an unrelated
+// heart tap. And the overlay owns its own stacking context, which is what the
+// first version got wrong: the print used `z-index: -1` to sit behind the
+// camera, and promptly disappeared behind the card's background instead.
 //
+// Here the print is simply a lower sibling of the camera body — no negative
+// index, nothing to fall behind.
+//
+// Two things keep it honest rather than being a delay dressed as a feature.
 // The camera appears the instant you press the button and the print starts
-// sliding immediately, so the wait for the real canvas render happens *behind*
-// something worth watching. And if the render outlasts the slide, the print
-// simply hangs half-out — which is what a real one does, and reads as the
-// machine working rather than as a stall.
+// moving immediately, so the wait for the canvas happens *behind* something
+// worth watching. And it can be dismissed at any point.
 
 import { prefersReducedMotion } from './motion.js';
 
-const SLIDE_MS = 1400;
-const DEVELOP_MS = 2200;
+const SLIDE_MS = 1500;
+const DEVELOP_MS = 2400;
+const REST_MS = 900;
 
-// Drawn in the same flat, slightly wonky style as the icon set, with the app's
-// own tokens rather than literal colours so it belongs to whichever theme is
-// on. The slot is a real gap: the print emerges from behind the body.
 const CAMERA_SVG = `
-  <svg class="polaroid-camera" viewBox="0 0 260 200" aria-hidden="true">
+  <svg class="pc-camera" viewBox="0 0 260 200" aria-hidden="true">
     <rect class="pc-body" x="18" y="14" width="224" height="150" rx="22" />
     <rect class="pc-face" x="34" y="30" width="192" height="80" rx="14" />
     <circle class="pc-lens-outer" cx="130" cy="70" r="34" />
@@ -35,21 +39,32 @@ const CAMERA_SVG = `
   </svg>
 `;
 
-// The print itself: white card that the image fades up onto, exactly like the
-// polaroid frames used everywhere else in the app.
-const printMarkup = (src, alt) => `
-  <div class="polaroid-print">
-    <div class="polaroid-print-window">
-      <img src="${src}" alt="${alt}" />
+function overlayMarkup() {
+  return `
+    <div class="develop-scene">
+      <div class="develop-print" id="developPrint">
+        <div class="develop-print-window">
+          <img id="developImg" alt="" />
+        </div>
+        <span class="develop-print-lip"></span>
+      </div>
+      ${CAMERA_SVG}
     </div>
-    <span class="polaroid-print-caption"></span>
-  </div>
-`;
+    <p class="develop-status" id="developStatus" aria-live="polite">Developing...</p>
+    <button type="button" class="ghost small develop-skip" id="developSkip">Skip</button>
+  `;
+}
 
-// Resolves once the element's current animation ends, or after a ceiling —
-// a backgrounded tab never fires animationend, and the print must not be left
-// stuck inside the camera because someone switched away mid-render.
-function animationEnd(element, ceiling) {
+// Resolves on the element's animation end, on a dismiss, or after a ceiling.
+// A backgrounded tab fires no animation events at all, so without the ceiling
+// the print would be left half out of the camera forever.
+function settle(element, ceiling, signal) {
+  // Checked first, not just listened for. An abort that has *already* happened
+  // fires no event, so a listener alone would let every step after a dismiss
+  // sit and wait out its own ceiling — pressing Skip would stop one stage and
+  // then hang on the next.
+  if (signal?.aborted) return Promise.resolve();
+
   return new Promise((resolve) => {
     let done = false;
     const finish = () => {
@@ -57,63 +72,105 @@ function animationEnd(element, ceiling) {
       done = true;
       resolve();
     };
-    element.addEventListener('animationend', finish, { once: true });
+
+    element?.addEventListener('animationend', finish, { once: true });
+    signal?.addEventListener('abort', finish, { once: true });
     window.setTimeout(finish, ceiling);
+  });
+}
+
+function wait(ms, signal) {
+  if (signal?.aborted) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        window.clearTimeout(timer);
+        resolve();
+      },
+      { once: true }
+    );
   });
 }
 
 /**
  * Plays the whole beat around a render.
  *
- * `render` is awaited *while* the print is sliding out, which is the point:
- * the animation covers the work rather than being added to it.
+ * `render` is awaited *while* the print is sliding out, which is the point: the
+ * animation covers the work rather than being added to it.
  */
-export async function developCollage(host, render, { alt = 'Your collage' } = {}) {
-  if (!host) return render();
-
+export async function developCollage(render, { alt = 'Your collage' } = {}) {
   // Someone who asked for less motion gets the result and nothing else. There
   // is no information here to preserve — it is entirely a flourish.
   if (prefersReducedMotion()) return render();
 
-  const stage = document.createElement('div');
-  stage.className = 'polaroid-stage';
-  stage.innerHTML = CAMERA_SVG;
-  host.replaceChildren(stage);
+  const overlay = document.createElement('div');
+  overlay.className = 'develop-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', 'Developing your collage');
+  overlay.innerHTML = overlayMarkup();
+  document.body.appendChild(overlay);
 
-  // Started before the render is awaited, so the slide and the canvas work
-  // overlap instead of queueing.
-  const slot = document.createElement('div');
-  slot.className = 'polaroid-slot';
-  stage.appendChild(slot);
+  // Locked while the overlay is up, so the page behind cannot be scrolled by a
+  // stray swipe on a phone.
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+
+  const dismiss = new AbortController();
+  const close = () => dismiss.abort();
+
+  overlay.querySelector('#developSkip').addEventListener('click', close);
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) close();
+  });
+  const onKey = (event) => {
+    if (event.key === 'Escape') close();
+  };
+  document.addEventListener('keydown', onKey);
+
+  const teardown = () => {
+    document.removeEventListener('keydown', onKey);
+    document.body.style.overflow = previousOverflow;
+    overlay.classList.add('leaving');
+    window.setTimeout(() => overlay.remove(), 320);
+  };
 
   let result;
-  let failed = null;
 
   try {
+    // Started before the render is awaited: the slide and the canvas work
+    // overlap instead of queueing.
     result = await render();
   } catch (error) {
-    failed = error;
+    // Nothing to develop. Clear the stage immediately so the error toast is not
+    // shown over a camera about to produce nothing.
+    document.removeEventListener('keydown', onKey);
+    document.body.style.overflow = previousOverflow;
+    overlay.remove();
+    throw error;
   }
 
-  if (failed) {
-    // Nothing to develop. Clear the stage so the error toast isn't shown over
-    // a camera that is about to produce nothing.
-    stage.remove();
-    throw failed;
-  }
+  const print = overlay.querySelector('#developPrint');
+  const image = overlay.querySelector('#developImg');
+  const status = overlay.querySelector('#developStatus');
 
-  slot.innerHTML = printMarkup(result.previewUrl, alt);
-  const print = slot.querySelector('.polaroid-print');
+  image.src = result.previewUrl;
+  image.alt = alt;
 
   print.classList.add('sliding');
-  await animationEnd(print, SLIDE_MS + 400);
+  await settle(print, SLIDE_MS + 400, dismiss.signal);
 
+  status.textContent = 'Almost there...';
   print.classList.add('developing');
-  await animationEnd(print.querySelector('img'), DEVELOP_MS + 400);
+  await settle(image, DEVELOP_MS + 400, dismiss.signal);
 
-  // Handed back so the caller can swap in its own permanent markup; the stage
-  // has done its job the moment the picture is visible.
+  status.textContent = 'Yours ♡';
+  await wait(REST_MS, dismiss.signal);
+
+  teardown();
   return result;
 }
 
-export const POLAROID_TIMINGS = { SLIDE_MS, DEVELOP_MS };
+export const POLAROID_TIMINGS = { SLIDE_MS, DEVELOP_MS, REST_MS };

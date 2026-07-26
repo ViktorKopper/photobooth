@@ -35,7 +35,6 @@ export async function generateCollageFlow() {
     // print starts sliding out of the camera while the canvas is still being
     // drawn — the wait happens behind something worth watching.
     const result = await developCollage(
-      document.querySelector('#collageStage'),
       () =>
         generateCollage({
           photos: state.photos,

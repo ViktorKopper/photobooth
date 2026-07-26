@@ -630,9 +630,6 @@ function renderCollageSection(canGenerate) {
 
   section.classList.remove('hidden');
 
-  // The stage is where the camera animation plays; once it has finished, the
-  // finished print replaces it. Kept as one element so a re-render mid-develop
-  // cannot leave two collages on screen.
   const preview = state.collagePreviewUrl
     ? `<img class="collage-preview" src="${escapeAttr(state.collagePreviewUrl)}" alt="Generated collage preview" />`
     : '';
@@ -659,7 +656,7 @@ function renderCollageSection(canGenerate) {
         ${buildSegmented('Format', 'collageExport', EXPORT_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })), state.collageExport)}
       </div>
     </div>
-    <div id="collageStage" class="collage-stage">${preview}</div>
+    ${preview}
     <div class="action-row">
       <button class="primary" id="generateCollageBtn">Generate collage</button>
       <button class="secondary" id="downloadCollageBtn" ${needsBlob}>Download PNG</button>
