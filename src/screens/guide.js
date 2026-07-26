@@ -11,8 +11,10 @@
 // controls use, so adding a theme can't leave the guide describing four.
 
 import { COLLAGE_THEMES, EXPORT_PRESETS } from '../collage.js';
-import { TIMER_OPTIONS } from '../config.js';
+import { PRESENCE_WINDOW_MS, TIMER_OPTIONS } from '../config.js';
 import { FILTERS } from '../filters.js';
+import { POSE_PROMPTS } from '../prompts.js';
+import { MAX_STICKERS, STICKERS } from '../stickers.js';
 import { ICONS } from '../icons.js';
 import { escapeHtml } from '../ui/html.js';
 import { buildInstallSection, wireInstallSection } from './install.js';
@@ -137,6 +139,75 @@ function shooting() {
         term: 'Arrows',
         note: 'Swap two of your own photos between slots. Nothing is re-uploaded.'
       })}
+      ${row({
+        icon: ICONS.wand,
+        term: 'Deal a pose',
+        note: `A dare from a deck of ${POSE_PROMPTS.length}, under the camera. You both get the same card — that is the whole point of it.`
+      })}
+    </dl>
+  `;
+}
+
+// Marker, stickers and handwriting. Grouped because they are one idea — play
+// that survives into the finished collage rather than living only on screen —
+// and because none of the three is discoverable from the buttons alone.
+function decorating() {
+  const names = STICKERS.map((sticker) => sticker.label).join(' · ');
+
+  return `
+    <p class="guide-lead">Tap the marker on any thumbnail. Everything here ends up in the collage, not just on screen.</p>
+
+    <dl class="guide-rows">
+      ${row({
+        icon: ICONS.pencilTip,
+        term: 'Marker',
+        note: "Draw on any photo in the booth — yours or hers. You each have your own ink, and neither of you can rub out the other's."
+      })}
+      ${row({
+        icon: ICONS.heartFilled,
+        term: 'Stickers',
+        note: `${names}. Up to ${MAX_STICKERS} each; drag to move, sliders for size and angle.`
+      })}
+      ${row({
+        icon: ICONS.pencil,
+        term: 'Write it',
+        note: 'In the caption editor, beside typing. Use a finger or drag with the mouse — it lands on the collage in your own hand.'
+      })}
+      ${row({
+        icon: ICONS.book,
+        term: 'Where it is kept',
+        note: 'As lines and positions on the photo, not as a second image — so a drawing stays sharp from a thumbnail up to a print, and costs almost nothing.'
+      })}
+    </dl>
+  `;
+}
+
+// The things that only mean anything because someone else is at the other end.
+function together() {
+  const staleAfter = Math.round(PRESENCE_WINDOW_MS / 1000);
+
+  return `
+    <dl class="guide-rows">
+      ${row({
+        icon: ICONS.couple,
+        term: 'She is here',
+        note: `A soft pulse beside "Booth status" whenever she has the booth open. It fades on its own after about ${staleAfter} seconds of nothing, so a closed laptop cannot leave it stuck on.`
+      })}
+      ${row({
+        icon: ICONS.heart,
+        term: 'Thinking of you',
+        note: 'One button, no message. Hearts drift up her screen and her phone buzzes. Nothing is stored and nothing reaches the collage — it is meant to be felt and then gone.'
+      })}
+      ${row({
+        icon: ICONS.heartFilled,
+        term: 'Hearts landing',
+        note: 'React while you are both in the booth and the hearts float off the thumbnail on her side, as it happens.'
+      })}
+      ${row({
+        icon: ICONS.camera,
+        term: 'Shoot together',
+        note: 'The one moment you are genuinely in the same room. Both countdowns are anchored to the server, not to either phone.'
+      })}
     </dl>
   `;
 }
@@ -164,7 +235,7 @@ function collage() {
   const formats = EXPORT_PRESETS.map((preset) => preset.label).join(' · ');
 
   return `
-    <p class="guide-lead">Six photos, one image. Every control below can be changed and re-generated as often as you like.</p>
+    <p class="guide-lead">Six photos, one image — with whatever you drew, stuck on or wrote by hand drawn in. Every control below can be changed and re-generated as often as you like.</p>
 
     <p class="guide-subhead">Layout</p>
     <div class="guide-layouts">${layouts}</div>
@@ -179,6 +250,11 @@ function collage() {
         note: 'Print renders at double the pixels. Slower, and worth it only if you are actually printing it.'
       })}
       ${row({ term: 'Format', note: `${formats} — crops the finished image for where it is going.` })}
+      ${row({
+        icon: ICONS.camera,
+        term: 'Generating',
+        note: 'A camera takes over the screen and the print develops on it. Tap anywhere, or press Escape, to skip straight to the result.'
+      })}
     </dl>
   `;
 }
@@ -252,6 +328,8 @@ export function buildGuidePanel() {
 
       ${section('start', ICONS.hearts, 'Getting started', steps(), { open: true })}
       ${section('shoot', ICONS.camera, 'Taking photos', shooting())}
+      ${section('decorate', ICONS.pencilTip, 'Decorating photos', decorating())}
+      ${section('together', ICONS.couple, 'Being there together', together())}
       ${section('collage', ICONS.palette, 'Your collage', collage())}
       ${section('keep', ICONS.download, 'Saving and sharing', keeping())}
       ${section('privacy', ICONS.shield, 'Privacy and cleanup', privacy())}

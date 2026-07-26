@@ -3,6 +3,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { COLLAGE_THEMES, EXPORT_PRESETS } from '../collage.js';
 import { FILTERS } from '../filters.js';
+import { POSE_PROMPTS } from '../prompts.js';
+import { MAX_STICKERS, STICKERS } from '../stickers.js';
 import { buildGuidePanel, wireGuidePanel } from './guide.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -23,6 +25,8 @@ describe('structure', () => {
     expect(sections().map((node) => node.dataset.guideSection)).toEqual([
       'start',
       'shoot',
+      'decorate',
+      'together',
       'collage',
       'keep',
       'privacy',
@@ -82,7 +86,7 @@ describe('structure', () => {
     // The rows are where the escaping bug lived, so the assertion has to reach
     // inside one. The collage section is excluded on purpose: its rows are
     // theme and format names, which read better as a plain list.
-    ['shoot', 'keep', 'privacy'].forEach((id) => {
+    ['shoot', 'decorate', 'together', 'keep', 'privacy'].forEach((id) => {
       const terms = [...bodyFor(id).querySelectorAll('.guide-row dt')];
       expect(terms.length).toBeGreaterThan(0);
       expect(terms.every((dt) => dt.querySelector('svg'))).toBe(true);
@@ -116,6 +120,13 @@ describe('opening and closing', () => {
     toggleFor('collage').click();
     toggleFor('keep').click();
     expect(openSections()).toHaveLength(3);
+  });
+
+  it('opens the newer sections too', () => {
+    toggleFor('decorate').click();
+    toggleFor('together').click();
+    expect(bodyFor('decorate').hidden).toBe(false);
+    expect(bodyFor('together').hidden).toBe(false);
   });
 
   it('responds to a click on the icon inside the heading', () => {
@@ -179,6 +190,21 @@ describe('staying in sync with the app', () => {
     FILTERS.forEach((filter) => expect(text).toContain(filter.label));
   });
 
+  it('lists every sticker on the sheet', () => {
+    // Generated from STICKERS, so adding one cannot leave the guide describing
+    // the old eight.
+    const text = bodyFor('decorate').textContent;
+    STICKERS.forEach((sticker) => expect(text).toContain(sticker.label));
+  });
+
+  it('states how many stickers fit on a photo', () => {
+    expect(bodyFor('decorate').textContent).toContain(String(MAX_STICKERS));
+  });
+
+  it('states how big the pose deck actually is', () => {
+    expect(bodyFor('shoot').textContent).toContain(String(POSE_PROMPTS.length));
+  });
+
   it('warns that a filter is permanent', () => {
     // It is written into the uploaded file, so someone should know before
     // confirming rather than after.
@@ -209,6 +235,34 @@ describe('content', () => {
     const text = bodyFor('privacy').textContent;
     expect(text).toMatch(/two days/);
     expect(text).toMatch(/collages are kept/i);
+  });
+
+  it('explains the three ways to decorate a photo', () => {
+    // None of the three is discoverable from the buttons alone.
+    const text = bodyFor('decorate').textContent;
+    expect(text).toMatch(/Marker/);
+    expect(text).toMatch(/Stickers/);
+    expect(text).toMatch(/Write it/);
+  });
+
+  it('says decoration reaches the collage, not just the screen', () => {
+    // The whole reason it is worth doing.
+    expect(bodyFor('decorate').textContent).toMatch(/ends up in the collage/i);
+  });
+
+  it('covers what the other person can see of you', () => {
+    const text = bodyFor('together').textContent;
+    expect(text).toMatch(/She is here/);
+    expect(text).toMatch(/Thinking of you/);
+  });
+
+  it('is honest that a poke leaves nothing behind', () => {
+    expect(bodyFor('together').textContent).toMatch(/felt and then gone/);
+  });
+
+  it('says the develop animation can be skipped', () => {
+    // Otherwise it reads as four seconds you are forced to sit through.
+    expect(bodyFor('collage').textContent).toMatch(/skip/i);
   });
 
   it('does not promise notifications it cannot deliver', () => {
