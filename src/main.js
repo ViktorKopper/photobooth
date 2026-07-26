@@ -4,8 +4,20 @@ import { capturePhoto, startCamera, stopCamera } from './camera.js';
 import { clearCollageImageCache, COLLAGE_THEMES, EXPORT_PRESETS, generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
 import { describeLocation, describeSearchResult, fetchWeather, searchCities } from './geo.js';
-import { ICONS, weatherIcon } from './icons.js';
+import { ICONS } from './icons.js';
 import { forgetAllKeepsakes, listKeepsakes, rememberKeepsake } from './keepsakes.js';
+import {
+  buildKeepsakeGallery,
+  buildMilestoneLine,
+  buildSegmented,
+  buildSharedCollageBlock,
+  buildStreakLine,
+  buildThumbRow,
+  formatDays,
+  togetherLine,
+  weatherChip
+} from './screens/parts.js';
+import { escapeAttr, escapeHtml } from './ui/html.js';
 import { celebrateCompletion, playShutterSound, triggerShutterFeedback } from './ui/feedback.js';
 import { countUp, prefersReducedMotion, restartAnimation } from './ui/motion.js';
 import { mountThemeToggle } from './ui/theme.js';
@@ -37,7 +49,6 @@ import {
   getRoomIdFromUrl,
   hourOffsetBetween,
   isUsableLocation,
-  milestoneFor,
   normalizeRoomCode,
   otherRole,
   roomLink,
@@ -45,7 +56,6 @@ import {
   sanitizeCaption,
   sanitizeCollageMessage,
   sanitizeLocation,
-  streakFrom,
   sleep,
   timeInZone
 } from './utils.js';
@@ -133,31 +143,8 @@ function activeFilterCss() {
   return cssFromOps(findFilter(state.activeFilter).ops);
 }
 
-function formatDays(count) {
-  return count === 1 ? '1 day' : `${count} days`;
-}
 
-function togetherLine(anniversaryDate = ANNIVERSARY_DATE) {
-  const count = daysTogether(anniversaryDate);
-  return count ? `${ICONS.hearts} Together for ${formatDays(count)}` : '';
-}
 
-// Either "you're standing on a round number today" or a nudge towards the
-// next one. Shown only when it's close enough to mean something — a
-// countdown from 80 days out is just noise.
-function buildMilestoneLine() {
-  const milestone = milestoneFor(daysTogether(ANNIVERSARY_DATE));
-  if (!milestone) return '';
-
-  if (milestone.reached) {
-    return `<p class="milestone-line milestone-reached">${ICONS.heartFilled} ${escapeHtml(milestone.label)}</p>`;
-  }
-
-  if (milestone.remaining > 30) return '';
-
-  const days = milestone.remaining === 1 ? '1 day' : `${milestone.remaining} days`;
-  return `<p class="milestone-line">${escapeHtml(days)} to ${escapeHtml(milestone.label)}</p>`;
-}
 
 // A shooting stamp is never cleared — it's simply allowed to go stale, so
 // a browser closing mid-countdown can't strand the indicator. The window
@@ -173,39 +160,7 @@ function isShootingNow(stamp) {
   return age >= -5000 && age < SHOOTING_WINDOW_MS;
 }
 
-// Collages saved from past booths. The rooms behind these are long gone —
-// the files live outside the prefix that gets swept — so this is the only
-// trail back to them.
-function buildKeepsakeGallery() {
-  const keepsakes = listKeepsakes();
-  if (!keepsakes.length) return '';
 
-  const tiles = keepsakes
-    .slice(0, 12)
-    .map(
-      (keepsake) => `
-        <a class="keepsake" href="${escapeAttr(keepsake.url)}" target="_blank" rel="noopener"
-           title="Booth ${escapeAttr(keepsake.roomId)}">
-          <img src="${escapeAttr(keepsake.url)}" alt="Collage from booth ${escapeAttr(keepsake.roomId)}" loading="lazy" />
-        </a>
-      `
-    )
-    .join('');
-
-  return `
-    <div class="keepsakes">
-      <p class="field-label">Your collages</p>
-      <div class="keepsake-grid">${tiles}</div>
-      <button type="button" class="ghost small" id="clearKeepsakesBtn">Clear this list</button>
-    </div>
-  `;
-}
-
-function buildStreakLine() {
-  const streak = streakFrom(listRooms());
-  if (streak < 2) return '';
-  return `<p class="milestone-line">${ICONS.camera} ${streak} days in a row</p>`;
-}
 
 registerServiceWorker();
 mountThemeToggle();
@@ -340,9 +295,9 @@ function renderLanding() {
         <p class="eyebrow">private long-distance couple photobooth</p>
         <h1>Viktor & Jericka Photobooth</h1>
         <p class="hero-text">Even far apart, we can still make memories together.</p>
-        <p class="anniversary-line" id="landingDays">${togetherLine()}</p>
-        ${buildMilestoneLine()}
-        ${buildStreakLine()}
+        <p class="anniversary-line" id="landingDays">${togetherLine(ANNIVERSARY_DATE)}</p>
+        ${buildMilestoneLine(ANNIVERSARY_DATE)}
+        ${buildStreakLine(listRooms())}
 
         <label class="field-label" for="messageInput">Collage message</label>
         <input id="messageInput" class="text-input" maxlength="80" value="${escapeAttr(state.customMessage)}" />
@@ -365,7 +320,7 @@ function renderLanding() {
           <button class="secondary" id="joinBtn">Join booth</button>
         </div>
 
-        ${buildKeepsakeGallery()}
+        ${buildKeepsakeGallery(listKeepsakes())}
 
         ${
           boothCount
@@ -1025,66 +980,6 @@ function buildFilterRow() {
   ).join('');
 }
 
-function buildThumbRow(role) {
-  const ownerPhotos = state.photos
-    .filter((photo) => photo.owner === role)
-    .reduce((map, photo) => map.set(photo.index, photo), new Map());
-
-  const slots = [1, 2, 3].map((index) => {
-    const photo = ownerPhotos.get(index);
-    if (photo?.downloadUrl) {
-      // Only the owner of a photo can edit its caption — matches the
-      // Firestore rules, which only allow the owning role's uid to write
-      // to that photo doc.
-      const editButton = role === state.role
-        ? `<button type="button" class="thumb-edit-btn" data-role="${role}" data-index="${index}" title="Edit caption" aria-label="Edit caption for photo ${index}">${ICONS.pencil}</button>`
-        : '';
-
-      const retakeButton = role === state.role
-        ? `<button type="button" class="thumb-retake-btn" data-index="${index}" title="Retake this photo" aria-label="Retake photo ${index}">${ICONS.refresh}</button>`
-        : '';
-
-      // Reordering only makes sense between two photos that both exist, so
-      // an arrow appears only where there's a filled neighbour to trade
-      // places with.
-      const moveButtons = role === state.role
-        ? [
-            ownerPhotos.get(index - 1)
-              ? `<button type="button" class="thumb-move-btn thumb-move-left" data-from="${index}" data-to="${index - 1}" title="Move earlier" aria-label="Move photo ${index} earlier">${ICONS.arrowLeft}</button>`
-              : '',
-            ownerPhotos.get(index + 1)
-              ? `<button type="button" class="thumb-move-btn thumb-move-right" data-from="${index}" data-to="${index + 1}" title="Move later" aria-label="Move photo ${index} later">${ICONS.arrowRight}</button>`
-              : ''
-          ].join('')
-        : '';
-
-      // Anyone can react to any photo — reacting is the viewer's own
-      // expression, not something the photo owner controls.
-      const partnerRole = otherRole(state.role);
-      const partnerReacted = Boolean(photo.reactions?.[partnerRole]);
-      const myReacted = Boolean(photo.reactions?.[state.role]);
-
-      const partnerBadge = partnerReacted
-        ? `<span class="thumb-partner-heart" title="${escapeAttr(ROLES[partnerRole].name)} loves this photo">${ICONS.heartFilled}</span>`
-        : '';
-      const reactionButton = `<button
-        type="button"
-        class="thumb-reaction-btn${myReacted ? ' reacted' : ''}"
-        data-role="${role}"
-        data-index="${index}"
-        title="${myReacted ? 'Remove reaction' : 'Like this photo'}"
-        aria-label="${myReacted ? 'Remove reaction from photo' : 'Like photo'} ${index}"
-      >${myReacted ? ICONS.heartFilled : ICONS.heart}</button>`;
-
-      const replacing = role === state.role && state.replacingIndex === index;
-
-      return `<div class="thumb-slot filled${replacing ? ' replacing' : ''}"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}${retakeButton}${partnerBadge}${reactionButton}${moveButtons}</div>`;
-    }
-    return `<div class="thumb-slot empty">${index}</div>`;
-  });
-
-  return `<div class="thumb-row thumb-row-${role}">${slots.join('')}</div>`;
-}
 
 // Draws the two cities as endpoints of a curved arc — the visual shorthand
 // for a long-haul flight path — with each side's live local time and a
@@ -1117,7 +1012,7 @@ function renderDistancePanel() {
       <div class="distance-single">
         <span class="distance-city">${ICONS.pin} ${escapeHtml(describeLocation(known))}</span>
         ${clock ? `<span class="distance-clock">${clock.isNight ? ICONS.moon : ICONS.sun} ${escapeHtml(clock.label)}</span>` : ''}
-        ${weatherChip(knownRole)}
+        ${weatherChip(state.weather[knownRole])}
       </div>
       <p class="distance-hint">${escapeHtml(
         knownRole === myRole
@@ -1150,7 +1045,7 @@ function renderDistancePanel() {
     <div class="distance-side">
       <span class="distance-dot distance-dot-${role}">${clock?.isNight ? ICONS.moon : ICONS.sun}</span>
       <strong class="distance-time">${clock ? escapeHtml(clock.label) : '--:--'}</strong>
-      ${weatherChip(role)}
+      ${weatherChip(state.weather[role])}
       <span class="distance-city">${escapeHtml(describeLocation(role === myRole ? mine : theirs))}</span>
       <span class="distance-who">${escapeHtml(ROLES[role].name)}</span>
     </div>
@@ -1186,11 +1081,6 @@ function renderDistancePanel() {
   }
 }
 
-function weatherChip(role) {
-  const weather = state.weather[role];
-  if (!weather) return '';
-  return `<span class="distance-weather" title="${escapeAttr(weather.label)}">${weatherIcon(weather.code)} ${escapeHtml(String(weather.temperature))}°</span>`;
-}
 
 // Signature of both stored cities. Weather only needs re-fetching when this
 // changes — which is also how the first fetch gets triggered, since the
@@ -1301,10 +1191,10 @@ function updateRoomView() {
     progressPanel.innerHTML = `
       <div class="progress-row"><span>Viktor</span><strong>${viktorCount}/3</strong></div>
       <div class="meter meter-viktor"><span style="width:${(viktorCount / 3) * 100}%"></span></div>
-      ${buildThumbRow('viktor')}
+      ${buildThumbRow({ role: 'viktor', viewerRole: state.role, photos: state.photos, replacingIndex: state.replacingIndex })}
       <div class="progress-row"><span>Jericka</span><strong>${jerickaCount}/3</strong></div>
       <div class="meter meter-jericka"><span style="width:${(jerickaCount / 3) * 100}%"></span></div>
-      ${buildThumbRow('jericka')}
+      ${buildThumbRow({ role: 'jericka', viewerRole: state.role, photos: state.photos, replacingIndex: state.replacingIndex })}
       <div class="total-progress">Total memory progress: <strong>${total}/6</strong></div>
     `;
   }
@@ -1782,21 +1672,6 @@ async function toggleReactionFlow(ownerRole, index) {
   }
 }
 
-function buildSegmented(label, stateKey, options) {
-  return `
-    <div class="layout-control">
-      <span class="field-label">${escapeHtml(label)}</span>
-      <div class="segmented" data-state-key="${stateKey}" role="group" aria-label="${escapeAttr(label)}">
-        ${options
-          .map(
-            (option) =>
-              `<button type="button" class="segmented-option${state[stateKey] === option.value ? ' active' : ''}" data-value="${escapeAttr(option.value)}">${escapeHtml(option.label)}</button>`
-          )
-          .join('')}
-      </div>
-    </div>
-  `;
-}
 
 // Feature-detects the Web Share API's ability to share files (not just
 // text/links) — support varies a lot by browser, so the Share button is
@@ -1812,29 +1687,6 @@ function canShareFiles() {
   }
 }
 
-// The collage published to the room, if any — the one artifact both of you
-// share, as opposed to whatever each browser happens to have rendered.
-function buildSharedCollageBlock() {
-  const collage = state.room?.collage;
-  if (!collage?.downloadUrl) return '';
-
-  const savedByMe = collage.savedBy === state.role;
-  const savedByName = ROLES[collage.savedBy]?.name || 'Someone';
-  const details = [collage.layout, collage.theme, collage.format]
-    .filter((value) => value && value !== 'original')
-    .join(' · ');
-
-  return `
-    <div class="shared-collage">
-      <p class="eyebrow">saved to this booth</p>
-      <img class="collage-preview" src="${escapeAttr(collage.downloadUrl)}" alt="Collage saved to this booth" />
-      <p class="shared-collage-meta">${escapeHtml(
-        savedByMe ? 'You saved this for both of you.' : `${savedByName} saved this for both of you.`
-      )}${details ? ` (${escapeHtml(details)})` : ''}</p>
-      <a class="secondary shared-collage-download" href="${escapeAttr(collage.downloadUrl)}" target="_blank" rel="noopener">Download the shared one</a>
-    </div>
-  `;
-}
 
 function renderCollageSection(canGenerate) {
   const section = document.querySelector('#collageSection');
@@ -1862,13 +1714,13 @@ function renderCollageSection(canGenerate) {
           { value: 'grid', label: 'Grid' },
           { value: 'strip', label: 'Strip' },
           { value: 'hero', label: 'Hero' }
-        ])}
+        ], state.collageLayout)}
         ${buildSegmented('Quality', 'collageScale', [
           { value: '1', label: 'Standard' },
           { value: '2', label: 'Print (2×)' }
-        ])}
-        ${buildSegmented('Theme', 'collageTheme', COLLAGE_THEMES.map((theme) => ({ value: theme.id, label: theme.label })))}
-        ${buildSegmented('Format', 'collageExport', EXPORT_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })))}
+        ], state.collageScale)}
+        ${buildSegmented('Theme', 'collageTheme', COLLAGE_THEMES.map((theme) => ({ value: theme.id, label: theme.label })), state.collageTheme)}
+        ${buildSegmented('Format', 'collageExport', EXPORT_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })), state.collageExport)}
       </div>
     </div>
     ${preview}
@@ -1879,7 +1731,7 @@ function renderCollageSection(canGenerate) {
       <button class="secondary" id="publishCollageBtn" ${state.collageBlob ? '' : 'disabled'}>Save to booth</button>
     </div>
 
-    ${buildSharedCollageBlock()}
+    ${buildSharedCollageBlock(state.room?.collage, state.role)}
 
     <div class="danger-zone">
       <p class="danger-zone-label">Danger zone</p>
@@ -2121,15 +1973,4 @@ function showInlineError(inputId, message) {
   input.placeholder = message;
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
 
-function escapeAttr(value) {
-  return escapeHtml(value).replaceAll('`', '&#096;');
-}
