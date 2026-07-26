@@ -20,7 +20,20 @@ beforeEach(() => {
 
 describe('structure', () => {
   it('renders every section', () => {
-    expect(sections()).toHaveLength(5);
+    expect(sections().map((node) => node.dataset.guideSection)).toEqual([
+      'start',
+      'shoot',
+      'collage',
+      'keep',
+      'privacy',
+      'install'
+    ]);
+  });
+
+  it('leaves the install guide until last', () => {
+    // It's the one thing you do once, so it shouldn't sit above the parts you
+    // come back to.
+    expect(sections().at(-1).dataset.guideSection).toBe('install');
   });
 
   it('starts with exactly one section open', () => {
@@ -175,7 +188,14 @@ describe('staying in sync with the app', () => {
 
 describe('content', () => {
   it('explains the numbered path through the app', () => {
-    expect($$('.guide-steps li')).toHaveLength(4);
+    // Scoped to its own section: the install guide has numbered steps too.
+    expect(bodyFor('start').querySelectorAll('.guide-steps li')).toHaveLength(4);
+  });
+
+  it('explains how to install it to a home screen', () => {
+    const text = bodyFor('install').textContent;
+    expect(text).toMatch(/Safari/);
+    expect(text).toMatch(/Install app/);
   });
 
   it('covers the thing least likely to be discovered on its own', () => {

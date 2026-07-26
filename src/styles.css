@@ -1096,6 +1096,142 @@ p {
   vertical-align: -0.15em;
 }
 
+/* ------------------------------------------------- install (home screen) */
+
+.install-tabs {
+  margin: 0 0 14px;
+  width: 100%;
+}
+
+.install-figures {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.install-step-figure {
+  position: relative;
+  flex: 0 1 auto;
+}
+
+.install-step-number {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--rose);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.install-figure {
+  display: block;
+  width: 100%;
+  max-width: 84px;
+  height: auto;
+}
+
+/* The drawings are built from the same flat token palette as everything else,
+   so they follow the dark theme without a second set of artwork. */
+.install-body {
+  fill: var(--paper-raised);
+  stroke: var(--rose-dark);
+  stroke-width: 2.5;
+}
+
+.install-screen,
+.install-sheet {
+  fill: var(--note-bg);
+  stroke: none;
+}
+
+.install-sheet {
+  fill: var(--hover-bg);
+}
+
+.install-bar,
+.install-notch {
+  fill: var(--border);
+  stroke: none;
+}
+
+.install-line {
+  stroke: var(--muted);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  opacity: 0.45;
+  fill: none;
+}
+
+.install-line-fill {
+  fill: var(--muted);
+  opacity: 0.3;
+}
+
+.install-tile {
+  fill: var(--muted);
+  opacity: 0.22;
+}
+
+/* The one thing the step is asking you to press. */
+.install-mark {
+  fill: var(--rose);
+}
+
+.install-mark-ring {
+  fill: none;
+  stroke: var(--rose);
+  stroke-width: 2.5;
+}
+
+.install-glyph {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.install-glyph-fill {
+  fill: #fff;
+}
+
+.install-caveat {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--rose);
+  border-radius: 0;
+  background: var(--note-bg);
+  color: var(--text);
+}
+
+.install-caveat .icon {
+  flex: 0 0 auto;
+  color: var(--rose);
+}
+
+.install-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.install-done .icon {
+  color: var(--rose);
+}
+
 .share-box {
   margin-top: 20px;
 }

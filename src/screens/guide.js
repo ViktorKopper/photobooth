@@ -15,6 +15,7 @@ import { TIMER_OPTIONS } from '../config.js';
 import { FILTERS } from '../filters.js';
 import { ICONS } from '../icons.js';
 import { escapeHtml } from '../ui/html.js';
+import { buildInstallSection, wireInstallSection } from './install.js';
 
 // Written out here rather than stored on the theme itself: the palette objects
 // are drawing instructions, and a sentence about how a theme feels has no
@@ -254,6 +255,7 @@ export function buildGuidePanel() {
       ${section('collage', ICONS.palette, 'Your collage', collage())}
       ${section('keep', ICONS.download, 'Saving and sharing', keeping())}
       ${section('privacy', ICONS.shield, 'Privacy and cleanup', privacy())}
+      ${section('install', ICONS.download, 'Add it to your home screen', buildInstallSection())}
     </aside>
   `;
 }
@@ -270,6 +272,9 @@ export function wireGuidePanel() {
   // as the section refusing to open at all.
   if (panel.dataset.guideWired === 'true') return;
   panel.dataset.guideWired = 'true';
+
+  // The install section has its own device tabs inside it.
+  wireInstallSection(panel);
 
   panel.addEventListener('click', (event) => {
     const toggle = event.target.closest('.guide-toggle');
