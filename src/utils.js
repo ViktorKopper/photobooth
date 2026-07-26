@@ -13,6 +13,11 @@ export const ROLES = {
   }
 };
 
+// Both roles in a fixed order, for the many places that have to walk them.
+// Ordering matters: it decides which city sits on the left of the distance
+// panel, so it must not become an Object.keys() accident.
+export const ROLE_KEYS = ['viktor', 'jericka'];
+
 export function otherRole(role) {
   return role === 'viktor' ? 'jericka' : 'viktor';
 }

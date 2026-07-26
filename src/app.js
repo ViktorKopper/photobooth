@@ -1,8 +1,24 @@
 import { ensureAnonymousAuth } from './firebase.js';
+import { createWeatherWatcher } from './features/weather.js';
+import {
+  notificationPermission,
+  notifySyncRequested,
+  renderNotifyToggle,
+  requestNotificationPermission
+} from './features/notifications.js';
+import { roomApi } from './roomApi.js';
+import {
+  setRenderer,
+  state,
+  storeCustomMessage,
+  storeMyLocation,
+  storeRole
+} from './store.js';
+import { setApp } from './ui/shell.js';
 import { capturePhoto, startCamera, stopCamera } from './camera.js';
 import { clearCollageImageCache, COLLAGE_THEMES, EXPORT_PRESETS, generateCollage } from './collage.js';
 import { cssFromOps, findFilter, FILTERS } from './filters.js';
-import { describeLocation, describeSearchResult, fetchWeather, searchCities } from './geo.js';
+import { describeLocation, describeSearchResult, searchCities } from './geo.js';
 import { ICONS } from './icons.js';
 import { forgetAllKeepsakes, listKeepsakes, rememberKeepsake } from './keepsakes.js';
 import {
@@ -19,7 +35,7 @@ import {
 import { createCityPicker } from './ui/cityPicker.js';
 import { escapeAttr, escapeHtml } from './ui/html.js';
 import { celebrateCompletion, playShutterSound, triggerShutterFeedback } from './ui/feedback.js';
-import { countUp, prefersReducedMotion, restartAnimation } from './ui/motion.js';
+import { countUp, restartAnimation } from './ui/motion.js';
 import { mountThemeToggle } from './ui/theme.js';
 import { showError, showToast } from './ui/toast.js';
 import {
@@ -34,12 +50,7 @@ import {
 // of which is needed to render the landing page, pick a city or scan a QR
 // code. Loading it lazily lets the app become interactive first and fetch
 // the heavy part while the person is still typing.
-let roomModulePromise = null;
 
-function roomApi() {
-  if (!roomModulePromise) roomModulePromise = import('./room.js');
-  return roomModulePromise;
-}
 import {
   dayDeltaBetween,
   daysTogether,
@@ -60,15 +71,9 @@ import {
   timeInZone
 } from './utils.js';
 
-// Resolved on demand rather than at import time. This module has to be
-// importable without a page behind it — otherwise the screens below can
-// never be exercised in a test.
-let appRoot = null;
-
-function app() {
-  if (!appRoot || !appRoot.isConnected) appRoot = document.querySelector('#app');
-  return appRoot;
-}
+// Owns its own cache and timer, so none of it sits on the shared state
+// object. It only knows how to fetch; when to redraw is this module's call.
+const weather = createWeatherWatcher({ onUpdate: () => renderDistancePanel() });
 
 // Head start before the visible countdown begins, measured from the moment
 // Firestore resolves the request's server timestamp. Covers realtime
@@ -90,62 +95,8 @@ const TIMER_OPTIONS = [3, 10];
 // would quietly cost you 2.5s of running time over 10.)
 const COUNTDOWN_TICK_MS = 1000;
 
-const state = {
-  user: null,
-  roomId: getRoomIdFromUrl(),
-  role: localStorage.getItem('photobooth-role') || '',
-  room: null,
-  photos: [],
-  pendingCapture: null,
-  editingCaption: null,
-  replacingIndex: null,
-  facingMode: 'user',
-  activeFilter: 'none',
-  timerSeconds: 3,
-  onionSkinOn: false,
-  customMessage: localStorage.getItem('photobooth-message') || 'Our little photobooth memory',
-  myLocation: readStoredLocation(),
-  // The live city picker, so a re-render can tear the previous one down.
-  cityPicker: null,
-  collageBlob: null,
-  collagePreviewUrl: null,
-  collageLayout: 'grid',
-  collageScale: '1',
-  collageTheme: 'rose',
-  collageExport: 'original',
-  unsubscribeRoom: null,
-  unsubscribePhotos: null,
-  cameraStarted: false,
-  syncScheduledFor: null,
-  syncTimers: [],
-  clockTimer: null,
-  shootingTimer: null,
-  weather: { viktor: null, jericka: null },
-  weatherKey: '',
-  weatherTimer: null,
-  bothCompleteSeen: null,
-  // One-shot flags for intro flourishes, so the panels that re-render on a
-  // timer don't replay their entrance every tick.
-  distanceIntroDone: false,
-  dayCountIntroDone: false
-};
 
-function readStoredLocation() {
-  try {
-    return sanitizeLocation(JSON.parse(localStorage.getItem('photobooth-location') || 'null'));
-  } catch {
-    return null;
-  }
-}
 
-function storeMyLocation(location) {
-  state.myLocation = sanitizeLocation(location);
-  if (state.myLocation) {
-    localStorage.setItem('photobooth-location', JSON.stringify(state.myLocation));
-  } else {
-    localStorage.removeItem('photobooth-location');
-  }
-}
 
 function activeFilterCss() {
   return cssFromOps(findFilter(state.activeFilter).ops);
@@ -174,9 +125,27 @@ function isShootingNow(stamp) {
 // keeps every screen below reachable from a test without a service worker
 // being registered or an anonymous sign-in being started.
 export function startApp() {
+  // Registered once, here. Feature modules ask for a redraw through
+  // requestRender() in store.js rather than importing this one, which is what
+  // keeps the dependency graph acyclic as more of them move out.
+  setRenderer(updateRoomView);
+
+  // Read at boot rather than at module load: importing this file must not
+  // depend on a URL being there.
+  state.roomId = getRoomIdFromUrl();
+
   registerServiceWorker();
   mountThemeToggle();
   bootstrap();
+}
+
+async function requestNotificationPermissionFlow() {
+  await requestNotificationPermission();
+  renderNotifyToggle(document.querySelector('#notifyToggleBtn'));
+
+  if (notificationPermission() === 'denied') {
+    showError('Notifications are blocked for this site in your browser settings.');
+  }
 }
 
 
@@ -232,33 +201,6 @@ async function pruneExpiredRooms() {
 // its own elements the moment this returns — so the outgoing screen is
 // lifted into an absolutely-positioned ghost that animates away *on top of*
 // the new one, rather than delaying the swap.
-function setApp(html) {
-  const previous = app().firstElementChild;
-
-  if (!previous || prefersReducedMotion()) {
-    app().innerHTML = html;
-    return;
-  }
-
-  const ghost = document.createElement('div');
-  ghost.className = 'page-exit';
-  ghost.setAttribute('aria-hidden', 'true');
-  ghost.appendChild(previous);
-
-  // The ghost still holds a full copy of the old screen, ids and all.
-  // Stripping them guarantees a stray querySelector can never reach back
-  // into the screen that's on its way out.
-  ghost.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
-
-  app().innerHTML = html;
-  app().appendChild(ghost);
-
-  const remove = () => ghost.remove();
-  ghost.addEventListener('animationend', remove, { once: true });
-  // Safety net: if the animation never fires (backgrounded tab, for one),
-  // the ghost must not be left sitting over the live screen.
-  window.setTimeout(remove, 900);
-}
 
 function renderLoading(message) {
   setApp(`
@@ -349,8 +291,7 @@ export function renderLanding() {
   `);
 
   document.querySelector('#messageInput').addEventListener('input', (event) => {
-    state.customMessage = sanitizeCollageMessage(event.target.value);
-    localStorage.setItem('photobooth-message', state.customMessage);
+    storeCustomMessage(sanitizeCollageMessage(event.target.value));
   });
 
   wireCityPicker();
@@ -486,8 +427,7 @@ export function renderRoleGate(mode) {
 
   document.querySelectorAll('.role-card').forEach((button) => {
     button.addEventListener('click', () => {
-      state.role = button.dataset.role;
-      localStorage.setItem('photobooth-role', state.role);
+      storeRole(button.dataset.role);
 
       // A city is required before entering. Someone opening a shared link
       // skips the landing page entirely, so this gate is the only place
@@ -608,7 +548,6 @@ async function enterRoom() {
   );
 
   startClockTicker();
-  startWeatherTicker();
   syncMyLocationToRoom();
 
   await startCurrentCamera();
@@ -767,7 +706,7 @@ export function renderRoomShell() {
   document.querySelector('#syncBtn').addEventListener('click', requestSyncFlow);
   document.querySelector('#cancelReplaceBtn').addEventListener('click', cancelReplacingPhoto);
   document.querySelector('#notifyToggleBtn').addEventListener('click', requestNotificationPermissionFlow);
-  updateNotifyToggleButton();
+  renderNotifyToggle(document.querySelector('#notifyToggleBtn'));
 
   document.querySelector('#captionInput').addEventListener('input', (event) => {
     if (!state.pendingCapture) return;
@@ -970,7 +909,7 @@ function renderDistancePanel() {
       <div class="distance-single">
         <span class="distance-city">${ICONS.pin} ${escapeHtml(describeLocation(known))}</span>
         ${clock ? `<span class="distance-clock">${clock.isNight ? ICONS.moon : ICONS.sun} ${escapeHtml(clock.label)}</span>` : ''}
-        ${weatherChip(state.weather[knownRole])}
+        ${weatherChip(weather.get(knownRole))}
       </div>
       <p class="distance-hint">${escapeHtml(
         knownRole === myRole
@@ -1003,7 +942,7 @@ function renderDistancePanel() {
     <div class="distance-side">
       <span class="distance-dot distance-dot-${role}">${clock?.isNight ? ICONS.moon : ICONS.sun}</span>
       <strong class="distance-time">${clock ? escapeHtml(clock.label) : '--:--'}</strong>
-      ${weatherChip(state.weather[role])}
+      ${weatherChip(weather.get(role))}
       <span class="distance-city">${escapeHtml(describeLocation(role === myRole ? mine : theirs))}</span>
       <span class="distance-who">${escapeHtml(ROLES[role].name)}</span>
     </div>
@@ -1044,52 +983,12 @@ function renderDistancePanel() {
 // changes — which is also how the first fetch gets triggered, since the
 // room (and therefore any location at all) arrives asynchronously from
 // Firestore some time after the room screen is first rendered.
-function weatherKey() {
-  return ['viktor', 'jericka']
-    .map((role) => {
-      const location = state.room?.participants?.[role]?.location;
-      return isUsableLocation(location) ? `${location.latitude},${location.longitude}` : '-';
-    })
-    .join('|');
-}
 
-function maybeRefreshWeather() {
-  const key = weatherKey();
-  if (key === state.weatherKey) return;
-  state.weatherKey = key;
-  refreshWeather();
-}
 
 // Conditions move far slower than the clock, and this is a third-party API
 // we don't want to lean on. A failed lookup just leaves the chip out.
-async function refreshWeather() {
-  const roles = ['viktor', 'jericka'];
 
-  await Promise.all(
-    roles.map(async (role) => {
-      const location = state.room?.participants?.[role]?.location;
-      if (!isUsableLocation(location)) {
-        state.weather[role] = null;
-        return;
-      }
-      state.weather[role] = await fetchWeather(location);
-    })
-  );
 
-  renderDistancePanel();
-}
-
-function startWeatherTicker() {
-  stopWeatherTicker();
-  // Periodic top-up only. The initial fetch is driven by maybeRefreshWeather()
-  // once the room snapshot actually delivers the cities.
-  state.weatherTimer = window.setInterval(refreshWeather, 15 * 60 * 1000);
-}
-
-function stopWeatherTicker() {
-  if (state.weatherTimer) window.clearInterval(state.weatherTimer);
-  state.weatherTimer = null;
-}
 
 // Local times drift while the room stays open, so nudge the panel every
 // half minute. Cheap: it only rewrites the small status-card block.
@@ -1132,7 +1031,7 @@ function updateRoomView() {
     });
   }
 
-  maybeRefreshWeather();
+  weather.sync(state.room);
   renderDistancePanel();
 
   const viktorCount = state.room.participants?.viktor?.photoCount || 0;
@@ -1361,7 +1260,7 @@ function handleSyncCountdownChange() {
   state.syncScheduledFor = requestedAtMs;
 
   if (sync.requestedBy !== state.role) {
-    notifyPartnerSyncRequest();
+    notifySyncRequested(ROLES[otherRole(state.role)].name);
   }
 
   // Older rooms have no `seconds` on the request; fall back to the classic
@@ -1444,51 +1343,12 @@ function hideSyncStatus() {
   el.classList.add('hidden');
 }
 
-function updateNotifyToggleButton() {
-  const button = document.querySelector('#notifyToggleBtn');
-  if (!button || !('Notification' in window)) {
-    button?.classList.add('hidden');
-    return;
-  }
 
-  if (Notification.permission === 'granted') {
-    button.innerHTML = `${ICONS.bell} Notifications on`;
-    button.disabled = true;
-  } else if (Notification.permission === 'denied') {
-    button.innerHTML = `${ICONS.bellOff} Notifications blocked`;
-    button.disabled = true;
-  } else {
-    button.innerHTML = `${ICONS.bell} Enable notifications`;
-    button.disabled = false;
-  }
-}
-
-async function requestNotificationPermissionFlow() {
-  if (!('Notification' in window)) return;
-  await Notification.requestPermission();
-  updateNotifyToggleButton();
-}
 
 // Requesting permission needs a real user gesture (the button above), but
 // SHOWING a notification once permission is already granted does not — this
 // runs straight from the Firestore snapshot listener with no user gesture
 // available, which is fine as long as permission was granted ahead of time.
-async function notifyPartnerSyncRequest() {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-
-  try {
-    const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification('Synced countdown started! 💕', {
-      body: `${ROLES[otherRole(state.role)].name} wants to shoot together — get ready!`,
-      icon: `${import.meta.env.BASE_URL}icon-192.png`,
-      badge: `${import.meta.env.BASE_URL}icon-192.png`,
-      tag: 'photobooth-sync',
-      vibrate: [80, 40, 80]
-    });
-  } catch {
-    // Notifications are a nice-to-have; never block the countdown on this.
-  }
-}
 
 function retakePhoto() {
   if (state.pendingCapture?.previewUrl) URL.revokeObjectURL(state.pendingCapture.previewUrl);
@@ -1895,12 +1755,10 @@ function stopSubscriptions() {
   clearSyncTimers();
   window.clearTimeout(state.shootingTimer);
   stopClockTicker();
-  stopWeatherTicker();
+  // Also clears its cache and signature, so re-entering a room fetches fresh
+  // conditions rather than matching a stale key and skipping the lookup.
+  weather.stop();
   state.syncScheduledFor = null;
-  // Cleared so re-entering a room fetches fresh conditions rather than
-  // matching the stale key and skipping the lookup.
-  state.weatherKey = '';
-  state.weather = { viktor: null, jericka: null };
   state.bothCompleteSeen = null;
   state.distanceIntroDone = false;
   state.dayCountIntroDone = false;
