@@ -11,6 +11,22 @@ vi.mock('./firebase.js', () => ({
   ensureAnonymousAuth: vi.fn(async () => ({ uid: 'test-uid' }))
 }));
 
+// Picking a role starts navigation into a booth, which dynamically imports
+// room.js. Stubbed so a click in these tests reaches no network — room.js has
+// its own suite, against a Firestore fake, in room.test.js.
+const roomApi = {
+  createRoom: vi.fn(async () => 'LQLC9HXFDNTL'),
+  joinRoom: vi.fn(async () => undefined),
+  watchRoom: vi.fn(() => () => {}),
+  watchPhotos: vi.fn(() => () => {}),
+  deleteRoomSession: vi.fn(async () => undefined)
+};
+vi.mock('./room.js', () => roomApi);
+
+// Lets whatever a click kicked off settle before the test ends. Without it
+// an async render lands after teardown, where there is no longer a window.
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 // Seeded before the import, deliberately. The saved city is read into state
 // once, when the module loads — the same thing that happens on a real page
 // load. Writing it to localStorage after the import would change nothing.
@@ -148,10 +164,11 @@ describe('renderRoleGate', () => {
     expect($('h1').textContent).not.toBe(creating);
   });
 
-  it('remembers which person was chosen', () => {
+  it('remembers which person was chosen', async () => {
     renderRoleGate('create');
     $('.role-card[data-role="jericka"]').click();
     expect(localStorage.getItem('photobooth-role')).toBe('jericka');
+    await settle();
   });
 });
 
