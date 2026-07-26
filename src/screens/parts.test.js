@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  doodleOverlay,
   buildKeepsakeGallery,
   buildMilestoneLine,
   buildSegmented,
@@ -292,5 +293,94 @@ describe('buildThumbRow', () => {
   it('ignores photos belonging to the other person', () => {
     const mixed = row({ ...own, photos: [photo('viktor', 1), photo('jericka', 2), photo('jericka', 3)] });
     expect(mixed.querySelectorAll('.thumb-slot.filled')).toHaveLength(1);
+  });
+});
+
+describe('doodleOverlay', () => {
+  const drawn = (doodles) => dom(doodleOverlay({ owner: 'viktor', index: 1, doodles }));
+
+  it('is empty when nobody has drawn', () => {
+    expect(doodleOverlay({ owner: 'viktor', index: 1 })).toBe('');
+    expect(doodleOverlay({ owner: 'viktor', index: 1, doodles: {} })).toBe('');
+    expect(doodleOverlay({ owner: 'viktor', index: 1, doodles: { viktor: '' } })).toBe('');
+  });
+
+  it('draws one path per person who has', () => {
+    expect(drawn({ viktor: '100,200 300,400' }).querySelectorAll('path')).toHaveLength(1);
+    expect(
+      drawn({ viktor: '100,200 300,400', jericka: '500,500 600,600' }).querySelectorAll('path')
+    ).toHaveLength(2);
+  });
+
+  it('gives each person their own ink', () => {
+    const paths = drawn({ viktor: '0,0 100,100', jericka: '0,0 100,100' }).querySelectorAll('path');
+    expect(paths[0].getAttribute('stroke')).not.toBe(paths[1].getAttribute('stroke'));
+  });
+
+  it('stretches with the photo rather than letterboxing', () => {
+    // The strokes were recorded in the photo's own coordinate space, so the
+    // overlay has to distort exactly as the photo does.
+    const svg = drawn({ viktor: '0,0 1000,1000' }).querySelector('svg');
+    expect(svg.getAttribute('preserveAspectRatio')).toBe('none');
+    expect(svg.getAttribute('viewBox')).toBe('0 0 1000 1000');
+  });
+
+  it('is invisible to assistive tech', () => {
+    expect(drawn({ viktor: '0,0 100,100' }).querySelector('svg').getAttribute('aria-hidden')).toBe(
+      'true'
+    );
+  });
+
+  it('survives a corrupt path instead of rendering a broken one', () => {
+    expect(() => doodleOverlay({ owner: 'viktor', index: 1, doodles: { viktor: 'junk' } })).not.toThrow();
+    expect(doodleOverlay({ owner: 'viktor', index: 1, doodles: { viktor: 'junk' } })).toBe('');
+  });
+});
+
+describe('the doodle button on a thumbnail', () => {
+  const photoAt = (owner, index, extra = {}) => ({
+    owner,
+    index,
+    downloadUrl: `https://example.test/${owner}-${index}.jpg`,
+    reactions: { viktor: false, jericka: false },
+    ...extra
+  });
+
+  it('appears on your own photos and your partner\'s alike', () => {
+    // Drawing on hers is the point; it is not an owner-only action.
+    const mine = dom(
+      buildThumbRow({ role: 'viktor', viewerRole: 'viktor', photos: [photoAt('viktor', 1)] })
+    );
+    const theirs = dom(
+      buildThumbRow({ role: 'jericka', viewerRole: 'viktor', photos: [photoAt('jericka', 1)] })
+    );
+
+    expect(mine.querySelectorAll('.thumb-doodle-btn')).toHaveLength(1);
+    expect(theirs.querySelectorAll('.thumb-doodle-btn')).toHaveLength(1);
+  });
+
+  it('carries which photo it belongs to', () => {
+    const row = dom(
+      buildThumbRow({ role: 'jericka', viewerRole: 'viktor', photos: [photoAt('jericka', 2)] })
+    );
+    const button = row.querySelector('.thumb-doodle-btn');
+    expect(button.dataset.role).toBe('jericka');
+    expect(button.dataset.index).toBe('2');
+  });
+
+  it('is not offered on an empty slot', () => {
+    const row = dom(buildThumbRow({ role: 'viktor', viewerRole: 'viktor', photos: [] }));
+    expect(row.querySelectorAll('.thumb-doodle-btn')).toHaveLength(0);
+  });
+
+  it('shows an existing drawing over the thumbnail', () => {
+    const row = dom(
+      buildThumbRow({
+        role: 'viktor',
+        viewerRole: 'viktor',
+        photos: [photoAt('viktor', 1, { doodles: { jericka: '0,0 500,500' } })]
+      })
+    );
+    expect(row.querySelectorAll('.thumb-doodle')).toHaveLength(1);
   });
 });

@@ -17,6 +17,7 @@ import { renderFatalError, renderLoading } from '../screens/system.js';
 import { showError, showToast } from '../ui/toast.js';
 import { isUsableLocation, sanitizeCollageMessage, sanitizeLocation } from '../utils.js';
 import { startCurrentCamera } from './capture.js';
+import { closeDoodleEditor } from './doodleEditor.js';
 import { handlePokeChange, resetPokeHistory } from './poke.js';
 import { resetPoseCardHistory } from './poseCard.js';
 import { startPresenceHeartbeat, stopPresenceExpiry, stopPresenceHeartbeat } from './presence.js';
@@ -162,6 +163,7 @@ export function stopSubscriptions() {
   // These three track "what had I already seen" across snapshots. Carried into
   // the next booth they would replay its history as if it were live.
   resetPokeHistory();
+  closeDoodleEditor();
   resetReactionHistory();
   resetPoseCardHistory();
   // Also clears its cache and signature, so re-entering a room fetches fresh

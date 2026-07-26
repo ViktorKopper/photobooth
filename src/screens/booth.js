@@ -34,6 +34,7 @@ import {
   swapPhotosFlow,
   toggleReactionFlow
 } from '../features/photos.js';
+import { openDoodleEditor, wireDoodleEditor } from '../features/doodleEditor.js';
 import { sendPokeFlow } from '../features/poke.js';
 import { renderPoseCard } from '../features/poseCard.js';
 import { isHereNow, schedulePresenceExpiry } from '../features/presence.js';
@@ -168,6 +169,26 @@ export function renderRoomShell() {
 
       <section id="collageSection" class="card collage-card hidden"></section>
 
+      <div id="doodleOverlay" class="caption-editor-overlay doodle-overlay hidden">
+        <div class="caption-editor-card doodle-card">
+          <p class="doodle-title">Draw on it <span id="doodleWho" class="doodle-who"></span></p>
+          <div class="doodle-stage">
+            <img id="doodleImg" alt="" />
+            <svg id="doodleSurface" class="doodle-surface" viewBox="0 0 1000 1000" preserveAspectRatio="none">
+              <path id="doodleTheirs" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+              <path id="doodleMine" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+          <p id="doodleFull" class="doodle-full hidden">That's as much marker as fits on one photo.</p>
+          <div class="action-row doodle-actions">
+            <button class="ghost small" id="doodleUndoBtn">Undo</button>
+            <button class="ghost small" id="doodleClearBtn">Clear mine</button>
+            <button class="secondary" id="doodleCancelBtn">Cancel</button>
+            <button class="primary" id="doodleSaveBtn">Save</button>
+          </div>
+        </div>
+      </div>
+
       <div id="captionEditorOverlay" class="caption-editor-overlay hidden">
         <div class="caption-editor-card">
           <img id="captionEditorImg" alt="Photo" />
@@ -249,6 +270,9 @@ function wireRoomShell() {
     const edit = event.target.closest('.thumb-edit-btn');
     if (edit) return openCaptionEditor(edit.dataset.role, Number(edit.dataset.index));
 
+    const doodle = event.target.closest('.thumb-doodle-btn');
+    if (doodle) return openDoodleEditor(doodle.dataset.role, Number(doodle.dataset.index));
+
     const retake = event.target.closest('.thumb-retake-btn');
     if (retake) return startReplacingPhoto(Number(retake.dataset.index));
 
@@ -258,6 +282,8 @@ function wireRoomShell() {
     const reaction = event.target.closest('.thumb-reaction-btn');
     if (reaction) toggleReactionFlow(reaction.dataset.role, Number(reaction.dataset.index));
   });
+
+  wireDoodleEditor();
 
   document.querySelector('#captionEditorCancelBtn').addEventListener('click', closeCaptionEditor);
   document.querySelector('#captionEditorSaveBtn').addEventListener('click', saveCaptionEditor);

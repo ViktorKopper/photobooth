@@ -1,4 +1,5 @@
-import { clamp, daysTogether, distanceBetween, formatDate, formatDistanceKm } from './utils.js';
+import { decodeStrokes, drawStrokes, strokeWidthFor } from './doodle.js';
+import { clamp, daysTogether, distanceBetween, formatDate, formatDistanceKm, ROLE_KEYS } from './utils.js';
 
 // Colour themes for the finished collage. Every drawing routine reads from
 // the active palette rather than hard-coded hexes, so a theme swap restyles
@@ -432,6 +433,28 @@ function drawCardCaption(ctx, text, x, y, width, height, innerY, innerHeight, co
 // Draws one photo as a small "instant photo" card: white polaroid-style
 // frame with a thicker caption margin at the bottom, a slight deterministic
 // tilt, and an optional washi-tape accent tinted to the photo's owner.
+// Both people's marker, in their own ink, over the photo it was drawn on.
+//
+// The theme decides the ink: on Mono, where the photos themselves are drained
+// of colour, two coloured scribbles would be the only saturated thing on the
+// page and would read as a mistake rather than a choice.
+function drawDoodleLayers(ctx, doodles, rect) {
+  if (!doodles) return;
+
+  ROLE_KEYS.forEach((role) => {
+    const strokes = decodeStrokes(doodles[role] || '');
+    if (!strokes.length) return;
+
+    drawStrokes(ctx, strokes, {
+      ...rect,
+      color: PALETTE.photoFilter?.includes('grayscale')
+        ? PALETTE.title
+        : PALETTE[role === 'viktor' ? 'viktorInk' : 'jerickaInk'],
+      lineWidth: strokeWidthFor(rect.width)
+    });
+  });
+}
+
 function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
   const {
     rotationDeg = 0,
@@ -440,7 +463,8 @@ function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
     caption = '',
     captionColor = PALETTE.label,
     captionRotationDeg = 0,
-    markerReady = false
+    markerReady = false,
+    doodles = null
   } = options;
 
   const cx = x + width / 2;
@@ -489,6 +513,16 @@ function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
   ctx.fillStyle = PALETTE.photoTint;
   ctx.fillRect(innerX, innerY, innerWidth, innerHeight);
   ctx.globalAlpha = 1;
+
+  // Inside the same clip as the photo, so a line that ran off the edge while
+  // drawing is cropped by the frame rather than scrawling across the mount.
+  // Drawn after the tint so the marker keeps its own colour.
+  drawDoodleLayers(ctx, doodles, {
+    x: innerX,
+    y: innerY,
+    width: innerWidth,
+    height: innerHeight
+  });
   ctx.restore();
 
   ctx.save();
@@ -831,7 +865,7 @@ async function loadOwnerItems(photos) {
   const items = [];
   for (const photo of photos) {
     const image = await loadImageFromUrl(photo.downloadUrl, photoCacheKey(photo));
-    items.push({ image, caption: photo.caption || '' });
+    items.push({ image, caption: photo.caption || '', doodles: photo.doodles || null });
   }
   return items;
 }
@@ -889,6 +923,7 @@ function drawGridLayout(ctx, dims, payload) {
       washiColor: PALETTE.viktorTape,
       washiAngle: row % 2 === 0 ? -7 : 6,
       caption: viktorItems[row].caption,
+      doodles: viktorItems[row].doodles,
       captionColor: PALETTE.viktorInk,
       captionRotationDeg: captionRotationFor(row * 2),
       markerReady
@@ -898,6 +933,7 @@ function drawGridLayout(ctx, dims, payload) {
       washiColor: PALETTE.jerickaTape,
       washiAngle: row % 2 === 0 ? 7 : -6,
       caption: jerickaItems[row].caption,
+      doodles: jerickaItems[row].doodles,
       captionColor: PALETTE.jerickaInk,
       captionRotationDeg: captionRotationFor(row * 2 + 1),
       markerReady
@@ -985,6 +1021,7 @@ function drawStripLayout(ctx, dims, payload) {
       washiColor: PALETTE.viktorTape,
       washiAngle: -6,
       caption: viktorItems[round].caption,
+      doodles: viktorItems[round].doodles,
       captionColor: PALETTE.viktorInk,
       captionRotationDeg: captionRotationFor(round * 2),
       markerReady
@@ -997,6 +1034,7 @@ function drawStripLayout(ctx, dims, payload) {
       washiColor: PALETTE.jerickaTape,
       washiAngle: 6,
       caption: jerickaItems[round].caption,
+      doodles: jerickaItems[round].doodles,
       captionColor: PALETTE.jerickaInk,
       captionRotationDeg: captionRotationFor(round * 2 + 1),
       markerReady
@@ -1087,6 +1125,7 @@ function drawHeroLayout(ctx, dims, payload) {
     washiColor: heroColor,
     washiAngle: -6,
     caption: heroItems[2].caption,
+    doodles: heroItems[2].doodles,
     captionColor: heroInk,
     captionRotationDeg: captionRotationFor(2),
     markerReady
@@ -1096,11 +1135,11 @@ function drawHeroLayout(ctx, dims, payload) {
   drawHeartAt(ctx, width / 2, heroY + heroSize + 28, 32, PALETTE.connectorHeart);
 
   const smallItems = [
-    { image: otherItems[0].image, caption: otherItems[0].caption, label: otherLabel, color: otherColor, ink: otherInk },
-    { image: otherItems[1].image, caption: otherItems[1].caption, label: otherLabel, color: otherColor, ink: otherInk },
-    { image: otherItems[2].image, caption: otherItems[2].caption, label: otherLabel, color: otherColor, ink: otherInk },
-    { image: heroItems[0].image, caption: heroItems[0].caption, label: heroLabel, color: heroColor, ink: heroInk },
-    { image: heroItems[1].image, caption: heroItems[1].caption, label: heroLabel, color: heroColor, ink: heroInk }
+    { image: otherItems[0].image, caption: otherItems[0].caption, doodles: otherItems[0].doodles, label: otherLabel, color: otherColor, ink: otherInk },
+    { image: otherItems[1].image, caption: otherItems[1].caption, doodles: otherItems[1].doodles, label: otherLabel, color: otherColor, ink: otherInk },
+    { image: otherItems[2].image, caption: otherItems[2].caption, doodles: otherItems[2].doodles, label: otherLabel, color: otherColor, ink: otherInk },
+    { image: heroItems[0].image, caption: heroItems[0].caption, doodles: heroItems[0].doodles, label: heroLabel, color: heroColor, ink: heroInk },
+    { image: heroItems[1].image, caption: heroItems[1].caption, doodles: heroItems[1].doodles, label: heroLabel, color: heroColor, ink: heroInk }
   ];
 
   smallItems.forEach((item, index) => {
@@ -1110,6 +1149,7 @@ function drawHeroLayout(ctx, dims, payload) {
       washiColor: item.color,
       washiAngle: index % 2 === 0 ? -7 : 7,
       caption: item.caption,
+      doodles: item.doodles,
       captionColor: item.ink,
       captionRotationDeg: captionRotationFor(index),
       markerReady

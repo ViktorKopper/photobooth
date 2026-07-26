@@ -21,6 +21,7 @@ const {
   sendPoke,
   dealPosePrompt,
   clearPosePrompt,
+  updateDoodle,
   publishCollage,
   deleteRoomSession,
   watchPhotos
@@ -449,6 +450,80 @@ describe('updateCaption', () => {
   it('turns a cleared caption into an empty string', async () => {
     await edit({ caption: null });
     expect(fake.read(`${ROOM_PATH}/photos/viktor-1`).caption).toBe('');
+  });
+});
+
+describe('updateDoodle', () => {
+  const draw = (extra = {}) =>
+    updateDoodle({
+      roomId: ROOM,
+      uid: V_UID,
+      myRole: 'viktor',
+      ownerRole: 'jericka',
+      index: 2,
+      encoded: '100,200 300,400',
+      room: fake.read(ROOM_PATH),
+      ...extra
+    });
+
+  beforeEach(() => {
+    seedRoom();
+    seedPhoto('jericka', 2);
+  });
+
+  it('lets you draw on your partner\'s photo', async () => {
+    await draw();
+    expect(fake.read(`${ROOM_PATH}/photos/jericka-2`).doodles.viktor).toBe('100,200 300,400');
+  });
+
+  it('touches only your own key', async () => {
+    // The rules permit exactly this one field, for the same reason reactions
+    // do: neither of you can rub out the other's marker.
+    await draw();
+    expect(lastWriteTo(`${ROOM_PATH}/photos/jericka-2`).data).toEqual({
+      'doodles.viktor': '100,200 300,400'
+    });
+  });
+
+  it("leaves the partner's drawing alone", async () => {
+    fake.seed(`${ROOM_PATH}/photos/jericka-2`, {
+      ...fake.read(`${ROOM_PATH}/photos/jericka-2`),
+      doodles: { viktor: '', jericka: '500,500' }
+    });
+    await draw();
+
+    expect(fake.read(`${ROOM_PATH}/photos/jericka-2`).doodles).toEqual({
+      viktor: '100,200 300,400',
+      jericka: '500,500'
+    });
+  });
+
+  it('rubs out your own by saving nothing', async () => {
+    await draw();
+    await draw({ encoded: '' });
+    expect(fake.read(`${ROOM_PATH}/photos/jericka-2`).doodles.viktor).toBe('');
+  });
+
+  it('writes a string rather than null, which the rules would reject', async () => {
+    await draw({ encoded: null });
+    expect(fake.read(`${ROOM_PATH}/photos/jericka-2`).doodles.viktor).toBe('');
+  });
+
+  it('clamps a nonsense slot into range', async () => {
+    seedPhoto('jericka', 3);
+    await draw({ index: 99 });
+    expect(fake.read(`${ROOM_PATH}/photos/jericka-3`).doodles.viktor).toBeDefined();
+  });
+
+  it('refuses an impostor', async () => {
+    await expect(draw({ uid: 'impostor' })).rejects.toThrow(/not connected as this person/);
+  });
+
+  it('leaves the photo itself untouched', async () => {
+    await draw();
+    const photo = fake.read(`${ROOM_PATH}/photos/jericka-2`);
+    expect(photo.storagePath).toContain('photo-2.jpg');
+    expect(photo.caption).toBe('');
   });
 });
 

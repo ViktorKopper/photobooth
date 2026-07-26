@@ -9,8 +9,10 @@
 // No state, no DOM, no side effects: given the same input they produce the
 // same output, which is exactly what makes them testable.
 
+import { decodeStrokes, DOODLE_STROKE_RATIO, strokesToSvgPath } from '../doodle.js';
 import { ICONS, weatherIcon } from '../icons.js';
 import { escapeAttr, escapeHtml } from '../ui/html.js';
+import { CAPTION_INK } from '../config.js';
 import { daysTogether, milestoneFor, otherRole, streakFrom } from '../utils.js';
 import { ROLES } from '../utils.js';
 
@@ -142,6 +144,8 @@ export function buildThumbRow({ role, viewerRole, photos, replacingIndex = null 
       return `<div class="thumb-slot empty">${index}</div>`;
     }
 
+    const doodleButton = `<button type="button" class="thumb-doodle-btn" data-role="${role}" data-index="${index}" title="Draw on this photo" aria-label="Draw on ${escapeAttr(ROLES[role].name)}'s photo ${index}">${ICONS.pencilTip}</button>`;
+
     const editButton = isOwner
       ? `<button type="button" class="thumb-edit-btn" data-role="${role}" data-index="${index}" title="Edit caption" aria-label="Edit caption for photo ${index}">${ICONS.pencil}</button>`
       : '';
@@ -181,8 +185,28 @@ export function buildThumbRow({ role, viewerRole, photos, replacingIndex = null 
 
     const replacing = isOwner && replacingIndex === index;
 
-    return `<div class="thumb-slot filled${replacing ? ' replacing' : ''}"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${editButton}${retakeButton}${partnerBadge}${reactionButton}${moveButtons}</div>`;
+    return `<div class="thumb-slot filled${replacing ? ' replacing' : ''}"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${doodleOverlay(photo)}${editButton}${retakeButton}${doodleButton}${partnerBadge}${reactionButton}${moveButtons}</div>`;
   });
 
   return `<div class="thumb-row thumb-row-${role}">${slots.join('')}</div>`;
+}
+
+// Both people's marker, drawn over the thumbnail so a drawing is visible
+// without opening anything. Stretched with the photo rather than letterboxed:
+// the strokes were recorded in the photo's own coordinate space.
+export function doodleOverlay(photo) {
+  const layers = ['viktor', 'jericka']
+    .map((role) => ({ role, strokes: decodeStrokes(photo.doodles?.[role] || '') }))
+    .filter((layer) => layer.strokes.length);
+
+  if (!layers.length) return '';
+
+  const paths = layers
+    .map(
+      (layer) =>
+        `<path d="${escapeAttr(strokesToSvgPath(layer.strokes))}" fill="none" stroke="${escapeAttr(CAPTION_INK[layer.role])}" stroke-width="${DOODLE_STROKE_RATIO * 1000}" stroke-linecap="round" stroke-linejoin="round" />`
+    )
+    .join('');
+
+  return `<svg class="thumb-doodle" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">${paths}</svg>`;
 }

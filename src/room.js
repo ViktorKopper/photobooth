@@ -319,6 +319,22 @@ export async function setReaction({ roomId, uid, myRole, ownerRole, index, value
   });
 }
 
+// Draws on a photo — yours or your partner's.
+//
+// Deliberately shaped exactly like setReaction: each person owns one key inside
+// a map, and the rules restrict a write to the caller's own key. That means the
+// two of you can draw on the same photo without either being able to rub out
+// the other's marker, and it needed no new permission model to say so.
+export async function updateDoodle({ roomId, uid, myRole, ownerRole, index, encoded, room = null }) {
+  await assertParticipant({ roomId, uid, role: myRole, room });
+
+  const safeIndex = Math.max(1, Math.min(index, 3));
+
+  await updateDoc(doc(db, 'rooms', roomId, 'photos', `${ownerRole}-${safeIndex}`), {
+    [`doodles.${myRole}`]: String(encoded || '')
+  });
+}
+
 // Requests a synchronized "shoot together" moment. Both partners' clients
 // watch the room doc and, once they observe the server-resolved
 // `requestedAt` timestamp, count down to the SAME future instant

@@ -148,7 +148,14 @@ export const ICONS = {
     '<path d="M4 5.5A2 2 0 0 1 6 4h5v16H6a2 2 0 0 0-2 1.5z"/><path d="M20 5.5A2 2 0 0 0 18 4h-5v16h5a2 2 0 0 1 2 1.5z"/>'
   ),
 
-  chevron: svg('<path d="M7 10l5 5 5-5" stroke-linecap="round" stroke-linejoin="round"/>')
+  chevron: svg('<path d="M7 10l5 5 5-5" stroke-linecap="round" stroke-linejoin="round"/>'),
+
+  // A marker rather than the pencil already used for captions, so the two
+  // actions on a thumbnail don't read as the same one twice.
+  pencilTip: svg(
+    '<path d="M15.5 4.5l4 4L9 19l-5 1 1-5z" stroke-linejoin="round"/>' +
+      '<path d="M13 7l4 4" stroke-linecap="round"/><path d="M4.5 15.5l4 4" stroke-linecap="round"/>'
+  )
 };
 
 // Maps a WMO weather code onto one of the drawn icons above.

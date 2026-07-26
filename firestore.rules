@@ -221,7 +221,8 @@ service cloud.firestore {
             'width',
             'height',
             'caption',
-            'reactions'
+            'reactions',
+            'doodles'
           ])
           && validRole(data.owner)
           && data.ownerUid == request.auth.uid
@@ -241,6 +242,20 @@ service cloud.firestore {
             && data.reactions.keys().hasOnly(['viktor', 'jericka'])
             && (!('viktor' in data.reactions) || data.reactions.viktor is bool)
             && (!('jericka' in data.reactions) || data.reactions.jericka is bool)
+          ))
+          // Same shape as reactions, and optional for the same reason. Each
+          // person owns one key; the cap matches DOODLE_MAX_CHARS in the
+          // client, so an accidental scribble can't grow without bound while
+          // somebody rests a finger on the screen.
+          && (!('doodles' in data) || (
+            data.doodles is map
+            && data.doodles.keys().hasOnly(['viktor', 'jericka'])
+            && (!('viktor' in data.doodles) || (
+              data.doodles.viktor is string && data.doodles.viktor.size() <= 4000
+            ))
+            && (!('jericka' in data.doodles) || (
+              data.doodles.jericka is string && data.doodles.jericka.size() <= 4000
+            ))
           ));
         }
 
@@ -264,11 +279,35 @@ service cloud.firestore {
                 : afterReactions.get('viktor', false) == beforeReactions.get('viktor', false));
         }
 
+        // The same arrangement as reactions, one field over: either person
+        // may draw on any photo in the room, but only inside their own key —
+        // so neither can rub out the other's marker.
+        function isDoodleOnlyUpdate(role) {
+          let before = resource.data;
+          let after = request.resource.data;
+          let beforeDoodles = ('doodles' in before) ? before.doodles : {};
+          let afterDoodles = after.doodles;
+          return validRole(role)
+            && before.diff(after).affectedKeys().hasOnly(['doodles'])
+            && afterDoodles is map
+            && afterDoodles.keys().hasOnly(['viktor', 'jericka'])
+            && (!('viktor' in afterDoodles) || (
+              afterDoodles.viktor is string && afterDoodles.viktor.size() <= 4000
+            ))
+            && (!('jericka' in afterDoodles) || (
+              afterDoodles.jericka is string && afterDoodles.jericka.size() <= 4000
+            ))
+            && (role == 'viktor'
+                ? afterDoodles.get('jericka', '') == beforeDoodles.get('jericka', '')
+                : afterDoodles.get('viktor', '') == beforeDoodles.get('viktor', ''));
+        }
+
         allow get, list: if isParticipant(roomId);
         allow create, update: if isParticipant(roomId)
           && (
             (validPhoto(request.resource.data) && ownsRole(roomId, request.resource.data.owner))
             || isReactionOnlyUpdate(callerRole(roomId))
+            || isDoodleOnlyUpdate(callerRole(roomId))
           );
         allow delete: if isParticipant(roomId);
       }
