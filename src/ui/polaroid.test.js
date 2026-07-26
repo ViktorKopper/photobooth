@@ -147,8 +147,13 @@ describe('when the render fails', () => {
       throw boom;
     });
 
+    // The assertion is attached before the timers are advanced, not after.
+    // Awaiting flush() first leaves the rejection unhandled for that window,
+    // which Vitest reports as an unhandled error — every test still passes and
+    // the run still fails, which is exactly how this got past me locally.
+    const rejects = expect(promise).rejects.toBe(boom);
     await flush(100);
-    await expect(promise).rejects.toBe(boom);
+    await rejects;
   });
 
   it('clears the overlay away rather than leaving it there', async () => {
