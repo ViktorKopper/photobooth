@@ -67,13 +67,21 @@ function section(id, icon, title, body, { open = false } = {}) {
   `;
 }
 
-// A labelled row. `term` is plain text; `note` may carry an icon, so it is
-// escaped by its caller rather than here.
-function row(term, note) {
+// A labelled row.
+//
+// The icon is a separate argument rather than something the caller glues onto
+// the front of the term, because the term is escaped — concatenating markup
+// into it prints the SVG source on the page as text. That is exactly what went
+// wrong here the first time, and it is the same mistake escapeHtml() invited
+// once before with the "together for N days" line.
+//
+// So: `icon` is trusted markup from our own icon set, `term` and `note` are
+// text and get escaped.
+function row({ icon = '', term, note }) {
   return `
     <div class="guide-row">
-      <dt>${escapeHtml(term)}</dt>
-      <dd>${note}</dd>
+      <dt>${icon}${escapeHtml(term)}</dt>
+      <dd>${escapeHtml(note)}</dd>
     </div>
   `;
 }
@@ -92,26 +100,42 @@ function steps() {
 function shooting() {
   return `
     <dl class="guide-rows">
-      ${row('Take photo', `Counts down, then captures. ${TIMER_OPTIONS.join('s or ')}s — pick before you press.`)}
-      ${row(
-        'Shoot together',
-        'Counts you both down to the same instant, anchored to the server rather than to either phone\'s clock, so the two shutters fire together.'
-      )}
-      ${row(`${ICONS.wand} Filters`, filterNote())}
-      ${row(
-        `${ICONS.ghost} Ghost`,
-        'Fades your previous photo over the live camera, so you can line the next one up against it.'
-      )}
-      ${row(
-        `${ICONS.refresh} Retake`,
-        'On any photo you have already confirmed. Keeps your caption and leaves the count alone.'
-      )}
-      ${row(`${ICONS.pencil} Caption`, 'Written in marker on the photo itself. Editable afterwards.')}
-      ${row(
-        `${ICONS.heart} Hearts`,
-        'On either of your photos, at any time. Yours shows filled; hers shows as a small heart in the corner.'
-      )}
-      ${row('Arrows', 'Swap two of your own photos between slots. Nothing is re-uploaded.')}
+      ${row({
+        icon: ICONS.timer,
+        term: 'Take photo',
+        note: `Counts down, then captures. ${TIMER_OPTIONS.join('s or ')}s — pick before you press.`
+      })}
+      ${row({
+        icon: ICONS.couple,
+        term: 'Shoot together',
+        note: "Counts you both down to the same instant, anchored to the server rather than to either phone's clock, so the two shutters fire together."
+      })}
+      ${row({ icon: ICONS.wand, term: 'Filters', note: filterNote() })}
+      ${row({
+        icon: ICONS.ghost,
+        term: 'Ghost',
+        note: 'Fades your previous photo over the live camera, so you can line the next one up against it.'
+      })}
+      ${row({
+        icon: ICONS.refresh,
+        term: 'Retake',
+        note: 'On any photo you have already confirmed. Keeps your caption and leaves the count alone.'
+      })}
+      ${row({
+        icon: ICONS.pencil,
+        term: 'Caption',
+        note: 'Written in marker on the photo itself. Editable afterwards.'
+      })}
+      ${row({
+        icon: ICONS.heart,
+        term: 'Hearts',
+        note: 'On either of your photos, at any time. Yours shows filled; hers shows as a small heart in the corner.'
+      })}
+      ${row({
+        icon: ICONS.arrowRight,
+        term: 'Arrows',
+        note: 'Swap two of your own photos between slots. Nothing is re-uploaded.'
+      })}
     </dl>
   `;
 }
@@ -133,10 +157,10 @@ function collage() {
   // undocumented here.
   const themes = COLLAGE_THEMES.map(
     (theme) =>
-      `<div class="guide-row"><dt>${escapeHtml(theme.label)}</dt><dd>${escapeHtml(THEME_NOTES[theme.id] || '')}</dd></div>`
+      row({ term: theme.label, note: THEME_NOTES[theme.id] || '' })
   ).join('');
 
-  const formats = EXPORT_PRESETS.map((preset) => escapeHtml(preset.label)).join(' · ');
+  const formats = EXPORT_PRESETS.map((preset) => preset.label).join(' · ');
 
   return `
     <p class="guide-lead">Six photos, one image. Every control below can be changed and re-generated as often as you like.</p>
@@ -149,8 +173,11 @@ function collage() {
 
     <p class="guide-subhead">Quality and format</p>
     <dl class="guide-rows">
-      ${row('Standard / Print', 'Print renders at double the pixels. Slower, and worth it only if you are actually printing it.')}
-      ${row('Format', `${formats} — crops the finished image for where it is going.`)}
+      ${row({
+        term: 'Standard / Print',
+        note: 'Print renders at double the pixels. Slower, and worth it only if you are actually printing it.'
+      })}
+      ${row({ term: 'Format', note: `${formats} — crops the finished image for where it is going.` })}
     </dl>
   `;
 }
@@ -158,16 +185,26 @@ function collage() {
 function keeping() {
   return `
     <dl class="guide-rows">
-      ${row(`${ICONS.download} Download PNG`, 'Saves the collage to this device only.')}
-      ${row(
-        `${ICONS.couple} Save to booth`,
-        'Uploads it so you both get the identical file. Without this you each keep your own version, with your own theme — two different keepsakes of one evening.'
-      )}
-      ${row(`${ICONS.share} Share`, 'Hands the image to your phone\'s share sheet. Hidden where the browser cannot do it.')}
-      ${row(
-        'Your collages',
-        'Saved collages are listed on the front page and outlive the booth they came from — they are stored apart from the photos, so a cleanup never takes them.'
-      )}
+      ${row({
+        icon: ICONS.download,
+        term: 'Download PNG',
+        note: 'Saves the collage to this device only.'
+      })}
+      ${row({
+        icon: ICONS.couple,
+        term: 'Save to booth',
+        note: 'Uploads it so you both get the identical file. Without this you each keep your own version, with your own theme — two different keepsakes of one evening.'
+      })}
+      ${row({
+        icon: ICONS.share,
+        term: 'Share',
+        note: "Hands the image to your phone's share sheet. Hidden where the browser cannot do it."
+      })}
+      ${row({
+        icon: ICONS.heartFilled,
+        term: 'Your collages',
+        note: 'Saved collages are listed on the front page and outlive the booth they came from — they are stored apart from the photos, so a cleanup never takes them.'
+      })}
     </dl>
   `;
 }
@@ -175,14 +212,31 @@ function keeping() {
 function privacy() {
   return `
     <dl class="guide-rows">
-      ${row('Who can get in', 'Only someone holding this room code. There is no list of rooms to browse and no way to guess one.')}
-      ${row('Two-day cleanup', 'Photos and rooms are deleted automatically after two days. Saved collages are kept.')}
-      ${row('Delete booth', 'In the collage panel. Removes the room and every photo for both of you, immediately.')}
-      ${row(
-        `${ICONS.bell} Notifications`,
-        'Only for a synced countdown, and only while the booth is open on screen — a closed app cannot wake itself.'
-      )}
-      ${row('The QR code', 'Drawn on your device. The room link is never sent to an outside service to render.')}
+      ${row({
+        icon: ICONS.shield,
+        term: 'Who can get in',
+        note: 'Only someone holding this room code. There is no list of rooms to browse and no way to guess one.'
+      })}
+      ${row({
+        icon: ICONS.timer,
+        term: 'Two-day cleanup',
+        note: 'Photos and rooms are deleted automatically after two days. Saved collages are kept.'
+      })}
+      ${row({
+        icon: ICONS.refresh,
+        term: 'Delete booth',
+        note: 'In the collage panel. Removes the room and every photo for both of you, immediately.'
+      })}
+      ${row({
+        icon: ICONS.bell,
+        term: 'Notifications',
+        note: 'Only for a synced countdown, and only while the booth is open on screen — a closed app cannot wake itself.'
+      })}
+      ${row({
+        icon: ICONS.pin,
+        term: 'The QR code',
+        note: 'Drawn on your device. The room link is never sent to an outside service to render.'
+      })}
     </dl>
   `;
 }

@@ -55,6 +55,33 @@ describe('structure', () => {
     expect($$('.guide-card svg').length).toBeGreaterThan(5);
     expect($('.guide-card').textContent).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
   });
+
+  it('draws its icons instead of printing their source', () => {
+    // The bug this replaced: row() escaped the whole term, so an icon glued
+    // onto the front of it came out as literal SVG source on the page. Counting
+    // <svg> elements did not catch it — the section headers had real ones — so
+    // this asserts on the rendered text instead.
+    expect($('.guide-card').textContent).not.toContain('<svg');
+    expect($('.guide-card').textContent).not.toContain('viewBox');
+  });
+
+  it('draws an icon inside the rows themselves, not only the headings', () => {
+    // The rows are where the escaping bug lived, so the assertion has to reach
+    // inside one. The collage section is excluded on purpose: its rows are
+    // theme and format names, which read better as a plain list.
+    ['shoot', 'keep', 'privacy'].forEach((id) => {
+      const terms = [...bodyFor(id).querySelectorAll('.guide-row dt')];
+      expect(terms.length).toBeGreaterThan(0);
+      expect(terms.every((dt) => dt.querySelector('svg'))).toBe(true);
+    });
+  });
+
+  it('still escapes the text around those icons', () => {
+    // The icon is trusted markup from our own set; everything beside it is
+    // text and must stay text.
+    const escaped = buildGuidePanel();
+    expect(escaped).not.toMatch(/<dt><svg[^>]*>[\s\S]*?<\/svg><[a-z]/);
+  });
 });
 
 describe('opening and closing', () => {
