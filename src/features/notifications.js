@@ -9,6 +9,7 @@
 // Everything here is best-effort. A notification never blocks a countdown.
 
 import { ICONS } from '../icons.js';
+import { showError } from '../ui/toast.js';
 
 export function notificationsSupported() {
   return typeof window !== 'undefined' && 'Notification' in window;
@@ -43,6 +44,17 @@ export function renderNotifyToggle(button) {
   const [html, disabled] = labels[Notification.permission] ?? labels.default;
   button.innerHTML = html;
   button.disabled = disabled;
+}
+
+// Asking must happen from a real user gesture, which is why this hangs off the
+// button rather than running at startup.
+export async function requestNotificationPermissionFlow() {
+  await requestNotificationPermission();
+  renderNotifyToggle(document.querySelector('#notifyToggleBtn'));
+
+  if (notificationPermission() === 'denied') {
+    showError('Notifications are blocked for this site in your browser settings.');
+  }
 }
 
 export async function notifySyncRequested(partnerName) {

@@ -11,9 +11,18 @@
 // does nothing unless they actually changed.
 
 import { fetchWeather } from '../geo.js';
+import { requestRender } from '../store.js';
 import { isUsableLocation, ROLE_KEYS } from '../utils.js';
 
 const REFRESH_MS = 15 * 60 * 1000;
+
+// The app's single watcher. Redraws through the store's seam rather than
+// calling the room screen, so the screen can read from it without the two
+// modules depending on each other.
+//
+// The redraw calls back into sync() — safely, because an unchanged signature
+// makes that a no-op, so there is no loop.
+export const weather = createWeatherWatcher({ onUpdate: requestRender });
 
 export function createWeatherWatcher({
   fetch = fetchWeather,
