@@ -38,6 +38,7 @@ import { deleteSessionFlow, leaveBooth } from '../features/session.js';
 import { isShootingNow, requestSyncFlow } from '../features/sync.js';
 import { weather } from '../features/weather.js';
 import { describeLocation } from '../geo.js';
+import { buildGuidePanel, wireGuidePanel } from './guide.js';
 import { ICONS } from '../icons.js';
 import { rememberKeepsake } from '../keepsakes.js';
 import { state } from '../store.js';
@@ -150,6 +151,8 @@ export function renderRoomShell() {
           </div>
           <p id="syncStatus" class="sync-status hidden"></p>
         </section>
+
+        ${buildGuidePanel()}
       </section>
 
       <section id="collageSection" class="card collage-card hidden"></section>
@@ -175,6 +178,7 @@ export function renderRoomShell() {
   `);
 
   wireRoomShell();
+  wireGuidePanel();
 }
 
 function wireRoomShell() {

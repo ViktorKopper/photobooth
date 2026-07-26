@@ -96,7 +96,59 @@ export const ICONS = {
 
   pencil: svg(
     '<path d="M4 20l1-4 11-11 3 3L8 19z" stroke-linejoin="round"/><path d="M14.5 6.5l3 3" stroke-linecap="round"/>'
-  )
+  ),
+
+  /* ------------------------------------------------- the guide panel's icons */
+
+  // The three collage shapes, drawn as miniatures of themselves so the choice
+  // is legible before you generate anything.
+  layoutGrid: svg('<rect x="3.5" y="4" width="7" height="5.5" rx="1"/><rect x="13.5" y="4" width="7" height="5.5" rx="1"/><rect x="3.5" y="14.5" width="7" height="5.5" rx="1"/><rect x="13.5" y="14.5" width="7" height="5.5" rx="1"/>'),
+
+  layoutStrip: svg('<rect x="8" y="3" width="8" height="5" rx="1"/><rect x="8" y="9.5" width="8" height="5" rx="1"/><rect x="8" y="16" width="8" height="5" rx="1"/>'),
+
+  layoutHero: svg('<rect x="4" y="3.5" width="16" height="10" rx="1.5"/><rect x="4" y="16" width="4.5" height="4.5" rx="1"/><rect x="9.8" y="16" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="16" width="4.5" height="4.5" rx="1"/>'),
+
+  palette: svg(
+    '<path d="M12 21a9 9 0 1 1 9-9c0 2.2-1.8 3-3.4 3H16a2 2 0 0 0-1.4 3.4A2 2 0 0 1 12 21z"/>' +
+      '<path d="M7.5 11h.01M10.5 7.5h.01M15 8h.01" stroke-linecap="round" stroke-width="2.2"/>'
+  ),
+
+  download: svg(
+    '<path d="M12 4v10.5" stroke-linecap="round"/><path d="M8 11l4 4 4-4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 19.5h15" stroke-linecap="round"/>'
+  ),
+
+  share: svg(
+    '<circle cx="18" cy="6" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/>' +
+      '<path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6" stroke-linecap="round"/>'
+  ),
+
+  // Two people, for the "you and them" sections.
+  couple: svg(
+    '<circle cx="8.5" cy="8" r="3"/><circle cx="16" cy="9" r="2.5"/>' +
+      '<path d="M3.5 19.5c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke-linecap="round"/>' +
+      '<path d="M15 15.5c2.6 0 4.5 1.8 4.5 4" stroke-linecap="round"/>'
+  ),
+
+  timer: svg(
+    '<circle cx="12" cy="13.5" r="7.5"/><path d="M12 10v3.5l2.5 2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M9.5 3h5" stroke-linecap="round"/>'
+  ),
+
+  wand: svg(
+    '<path d="M5 19.5L16 8.5" stroke-linecap="round"/><path d="M14.5 7l2.5 2.5" stroke-linecap="round"/>' +
+      '<path d="M18.5 3.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" stroke-linejoin="round"/>'
+  ),
+
+  shield: svg(
+    '<path d="M12 21s7-3.2 7-8.5V5.5L12 3 5 5.5V12.5C5 17.8 12 21 12 21z"/>' +
+      '<path d="M9 12l2.2 2.2L15.5 10" stroke-linecap="round" stroke-linejoin="round"/>'
+  ),
+
+  book: svg(
+    '<path d="M4 5.5A2 2 0 0 1 6 4h5v16H6a2 2 0 0 0-2 1.5z"/><path d="M20 5.5A2 2 0 0 0 18 4h-5v16h5a2 2 0 0 1 2 1.5z"/>'
+  ),
+
+  chevron: svg('<path d="M7 10l5 5 5-5" stroke-linecap="round" stroke-linejoin="round"/>')
 };
 
 // Maps a WMO weather code onto one of the drawn icons above.
