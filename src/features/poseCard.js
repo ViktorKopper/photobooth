@@ -50,7 +50,12 @@ export function buildPoseCard() {
 
 // Re-rendered on every room update, so the card animates in only when the card
 // itself actually changed — not on every heart tap and caption edit.
-let lastRenderedId = null;
+//
+// Three states, and the distinction matters: `undefined` means nothing has been
+// drawn here yet, `null` means no card is dealt. Starting this at `null` — as it
+// first did — makes the empty "deal a pose" prompt indistinguishable from an
+// already-drawn empty state, so it never rendered at all.
+let lastRenderedId;
 
 export function renderPoseCard() {
   const host = document.querySelector('#poseCard');
@@ -70,7 +75,9 @@ export function renderPoseCard() {
 }
 
 export function resetPoseCardHistory() {
-  lastRenderedId = null;
+  // Back to "nothing drawn yet", not "no card dealt" — so the next booth draws
+  // its empty state instead of assuming one is already on screen.
+  lastRenderedId = undefined;
 }
 
 function wirePoseCard() {
