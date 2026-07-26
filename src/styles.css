@@ -57,6 +57,12 @@
   --margin-rule: rgba(232, 93, 133, 0.35);
   --stitch: rgba(232, 93, 133, 0.28);
   --page: linear-gradient(140deg, #fdf6f2, #ffeef3 58%, #fffaf6);
+  /* Two soft glows on the paper, as if light were falling across it. These
+     were baked into the body rule as literal rgba, which meant the dark theme
+     inherited a pair of near-white washes and bled pale light across the top
+     corners. Tokenised so night gets its own, far dimmer, warmth. */
+  --glow-1: rgba(255, 217, 228, 0.55);
+  --glow-2: rgba(255, 233, 226, 0.7);
 
   --sage: #a8bfa0;
   --sage-deep: #3f5638;
@@ -136,8 +142,8 @@ body {
       transparent 0 29px,
       var(--rule) 29px 30px
     ),
-    radial-gradient(circle at 20% 18%, rgba(255, 217, 228, 0.55), transparent 30%),
-    radial-gradient(circle at 82% 8%, rgba(255, 233, 226, 0.7), transparent 32%),
+    radial-gradient(circle at 20% 18%, var(--glow-1), transparent 30%),
+    radial-gradient(circle at 82% 8%, var(--glow-2), transparent 32%),
     var(--page);
   background-attachment: fixed;
 }
@@ -1175,9 +1181,12 @@ p {
   pointer-events: none;
 }
 
+/* Bottom-LEFT, which is the only free corner on a thumbnail: the partner's
+   heart sits top-left, edit and retake top-right, and the reaction button
+   bottom-right. Putting this there too hid it completely underneath one. */
 .thumb-doodle-btn {
   position: absolute;
-  right: 4px;
+  left: 4px;
   bottom: 4px;
   display: grid;
   place-items: center;
@@ -1185,25 +1194,23 @@ p {
   height: 24px;
   padding: 0;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--r-pill);
   background: var(--glass-solid);
   color: var(--rose-dark);
+  box-shadow: var(--elev-1);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-soft);
+  transition: transform var(--dur-base) var(--ease-spring),
+    color var(--dur-base) var(--ease-soft);
 }
 
-/* Revealed on hover, and always on touch — where there is no hover to reveal
-   it with. */
-.thumb-slot:hover .thumb-doodle-btn,
-.thumb-doodle-btn:focus-visible {
-  opacity: 1;
+.thumb-doodle-btn:hover {
+  transform: scale(1.12) rotate(-8deg);
+  color: var(--rose);
 }
 
-@media (hover: none) {
-  .thumb-doodle-btn {
-    opacity: 1;
-  }
+.thumb-doodle-btn .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .doodle-card {
@@ -2046,11 +2053,43 @@ p {
   box-shadow: var(--elev-1);
 }
 
+/* Narrow enough that the filters, the timer and the ghost toggle can no longer
+   share one line without the filters being squeezed to nothing. Two rows, and
+   a rectangle rather than a pill — a stadium shape only reads as deliberate
+   while it is one row tall. */
+@media (max-width: 620px) {
+  .camera-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: var(--r-lg);
+  }
+
+  .filter-row {
+    flex: 1 0 100%;
+    justify-content: center;
+  }
+}
+
 .filter-row {
   display: flex;
   gap: 10px;
   padding: 4px 2px;
   overflow-x: auto;
+  /* Without both of these the row refuses to shrink below its content width,
+     so the last swatch was pushed under the timer picker rather than becoming
+     scrollable. `min-width: 0` is the one that actually matters — a flex item
+     defaults to min-content, not zero. */
+  flex: 1 1 auto;
+  min-width: 0;
+  /* The scrollbar is chrome on a row of five swatches. Fading the trailing
+     edge says "there's more" without a grey bar sitting across the glass. */
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+}
+
+.filter-row::-webkit-scrollbar {
+  display: none;
 }
 
 .timer-picker {
@@ -2689,6 +2728,10 @@ p {
   --margin-rule: rgba(232, 93, 133, 0.3);
   --stitch: rgba(244, 166, 192, 0.26);
   --page: linear-gradient(140deg, #211a1d, #2b1f26 58%, #1e1719);
+  /* Barely there — enough to keep the page from reading as flat black, not
+     enough to look like a light left on. */
+  --glow-1: rgba(244, 166, 192, 0.07);
+  --glow-2: rgba(255, 205, 180, 0.05);
 
   --bg: #211a1d;
   --text: #f6e8ec;
