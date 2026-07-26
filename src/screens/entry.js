@@ -5,6 +5,7 @@ import { stopCamera } from '../camera.js';
 import { ANNIVERSARY_DATE } from '../config.js';
 import { enterBooth, resetAllBoothsFlow, stopSubscriptions } from '../features/session.js';
 import { ICONS } from '../icons.js';
+import { keepsakeFromToday, yearsAgoLabel } from '../features/onThisDay.js';
 import { forgetAllKeepsakes, listKeepsakes } from '../keepsakes.js';
 import { listRooms } from '../roomHistory.js';
 import { state, storeCustomMessage, storeRole } from '../store.js';
@@ -54,6 +55,8 @@ export function renderLanding() {
           <button class="primary" id="createBtn">Create new booth</button>
           <button class="secondary" id="joinBtn">Join booth</button>
         </div>
+
+        ${buildOnThisDay()}
 
         ${buildKeepsakeGallery(listKeepsakes())}
 
@@ -205,4 +208,21 @@ export function renderLocationGate(mode) {
     if (!isUsableLocation(state.myLocation)) return;
     enterBooth(isCreate);
   });
+}
+
+// An evening from a year ago, handed back on its anniversary. Silent on every
+// other day of the year, which is what makes it worth anything.
+function buildOnThisDay() {
+  const keepsake = keepsakeFromToday(listKeepsakes());
+  if (!keepsake) return '';
+
+  return `
+    <a class="on-this-day" href="${escapeAttr(keepsake.url)}" target="_blank" rel="noopener">
+      <img src="${escapeAttr(keepsake.url)}" alt="Collage from ${escapeAttr(yearsAgoLabel(keepsake.years))}" loading="lazy" />
+      <span class="on-this-day-text">
+        <strong>${escapeHtml(yearsAgoLabel(keepsake.years))}</strong>
+        <span>${ICONS.hearts} you made this one</span>
+      </span>
+    </a>
+  `;
 }

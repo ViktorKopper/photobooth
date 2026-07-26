@@ -4,6 +4,7 @@ import { generateCollage } from '../collage.js';
 import { ANNIVERSARY_DATE } from '../config.js';
 import { roomApi } from '../roomApi.js';
 import { requestRender, state } from '../store.js';
+import { developCollage } from '../ui/polaroid.js';
 import { showError, showToast } from '../ui/toast.js';
 import { downloadBlob, ROLES } from '../utils.js';
 
@@ -30,20 +31,28 @@ export async function generateCollageFlow() {
   try {
     if (state.collagePreviewUrl) URL.revokeObjectURL(state.collagePreviewUrl);
 
-    const result = await generateCollage({
-      photos: state.photos,
-      customMessage: state.room?.customMessage || state.customMessage,
-      layout: state.collageLayout,
-      roomId: state.roomId,
-      scale: Number(state.collageScale) || 1,
-      anniversaryDate: state.room?.anniversaryDate || ANNIVERSARY_DATE,
-      locations: {
-        viktor: state.room?.participants?.viktor?.location || null,
-        jericka: state.room?.participants?.jericka?.location || null
-      },
-      theme: state.collageTheme,
-      exportPreset: state.collageExport
-    });
+    // The render is handed to the animation rather than awaited here, so the
+    // print starts sliding out of the camera while the canvas is still being
+    // drawn — the wait happens behind something worth watching.
+    const result = await developCollage(
+      document.querySelector('#collageStage'),
+      () =>
+        generateCollage({
+          photos: state.photos,
+          customMessage: state.room?.customMessage || state.customMessage,
+          layout: state.collageLayout,
+          roomId: state.roomId,
+          scale: Number(state.collageScale) || 1,
+          anniversaryDate: state.room?.anniversaryDate || ANNIVERSARY_DATE,
+          locations: {
+            viktor: state.room?.participants?.viktor?.location || null,
+            jericka: state.room?.participants?.jericka?.location || null
+          },
+          theme: state.collageTheme,
+          exportPreset: state.collageExport
+        }),
+      { alt: 'Your collage' }
+    );
 
     state.collageBlob = result.blob;
     state.collagePreviewUrl = result.previewUrl;

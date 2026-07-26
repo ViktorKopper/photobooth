@@ -13,6 +13,37 @@ export const ROLES = {
   }
 };
 
+// How many years ago something was, to the nearest whole one.
+//
+// Rounded rather than floored on purpose, because the caller allows a day
+// either side of the anniversary: floor would report the day *before* a first
+// anniversary as zero years and swallow it entirely. Rounding also settles the
+// awkward pair at the turn of the year — 31 December to 1 January is one day,
+// which rounds to zero years, not the one a calendar-difference would give.
+const AVERAGE_YEAR_DAYS = 365.2425;
+
+export function anniversaryYearsBetween(fromMs, toMs) {
+  const days = (toMs - fromMs) / 86400000;
+  if (days <= 0) return 0;
+  return Math.round(days / AVERAGE_YEAR_DAYS);
+}
+
+// How many days apart two dates are within their own years, ignoring which year
+// each is in. Used to ask "is today the anniversary of that?" without caring how
+// many years have passed.
+export function dayOfYearDistance(aMs, bMs) {
+  const a = new Date(aMs);
+  const b = new Date(bMs);
+
+  // Both projected onto the same (leap) year, so 29 February has somewhere to
+  // land and December-to-January stays adjacent.
+  const dayOf = (date) => Math.round((Date.UTC(2024, date.getMonth(), date.getDate()) - Date.UTC(2024, 0, 1)) / 86400000);
+
+  const distance = Math.abs(dayOf(a) - dayOf(b));
+  // The year is a circle: 31 December and 1 January are one day apart, not 365.
+  return Math.min(distance, 366 - distance);
+}
+
 // Both roles in a fixed order, for the many places that have to walk them.
 // Ordering matters: it decides which city sits on the left of the distance
 // panel, so it must not become an Object.keys() accident.

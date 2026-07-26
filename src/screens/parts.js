@@ -186,7 +186,11 @@ export function buildThumbRow({ role, viewerRole, photos, replacingIndex = null 
 
     const replacing = isOwner && replacingIndex === index;
 
-    return `<div class="thumb-slot filled${replacing ? ' replacing' : ''}"><img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${doodleOverlay(photo)}${editButton}${retakeButton}${doodleButton}${partnerBadge}${reactionButton}${moveButtons}</div>`;
+    // A strip of tape across the corner, which lifts away from the paper on
+    // hover. Purely a texture — the print underneath is what matters.
+    const tape = `<span class="thumb-tape thumb-tape-${role}" aria-hidden="true"></span>`;
+
+    return `<div class="thumb-slot filled${replacing ? ' replacing' : ''}">${tape}<img src="${escapeAttr(photo.downloadUrl)}" alt="${escapeAttr(ROLES[role].name)} photo ${index}" loading="lazy" />${doodleOverlay(photo)}${editButton}${retakeButton}${doodleButton}${partnerBadge}${reactionButton}${moveButtons}</div>`;
   });
 
   return `<div class="thumb-row thumb-row-${role}">${slots.join('')}</div>`;

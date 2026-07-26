@@ -1389,6 +1389,242 @@ p {
   flex: 0 0 auto;
 }
 
+/* ------------------------------------------------------------ peeling tape */
+
+.thumb-tape {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  z-index: 3;
+  width: 46%;
+  height: 15px;
+  border-radius: 1px;
+  background: var(--washi);
+  box-shadow: 0 1px 3px rgba(90, 42, 53, 0.18);
+  /* Anchored at the top edge, so lifting rotates it off the paper rather than
+     sliding it around like a sticker. */
+  transform-origin: 50% 0;
+  transform: translateX(-50%) rotate(-4deg);
+  transition: transform var(--dur-slow) var(--ease-spring),
+    box-shadow var(--dur-slow) var(--ease-soft);
+  pointer-events: none;
+}
+
+/* Two tints, so a row of six prints doesn't look machine-stamped. */
+.thumb-tape-viktor {
+  --washi: rgba(157, 195, 230, 0.62);
+}
+
+.thumb-tape-jericka {
+  --washi: rgba(244, 166, 192, 0.62);
+}
+
+/* Curls up and casts a longer shadow, as if one corner had come unstuck. */
+.thumb-slot:hover .thumb-tape {
+  transform: translateX(-50%) rotate(-9deg) translateY(-2px) perspective(120px) rotateX(28deg);
+  box-shadow: 0 6px 10px rgba(90, 42, 53, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thumb-tape {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------- the collage developing */
+
+.collage-stage {
+  display: grid;
+  place-items: center;
+  margin: 16px 0;
+}
+
+.polaroid-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding-bottom: 20px;
+}
+
+.polaroid-camera {
+  display: block;
+  width: min(260px, 70vw);
+  height: auto;
+  filter: drop-shadow(var(--elev-2));
+  animation: cameraArrive var(--dur-slow) var(--ease-spring) both;
+}
+
+/* Flat fills from the palette rather than literal colours, so the camera
+   belongs to whichever theme is on. */
+.pc-body { fill: var(--rose-dark); }
+.pc-face { fill: var(--paper-raised); }
+.pc-lens-outer { fill: var(--rose-dark); opacity: 0.85; }
+.pc-lens-inner { fill: var(--viktor-dark); }
+.pc-lens-glint { fill: #fff; opacity: 0.55; }
+.pc-flash { fill: var(--sage); }
+.pc-shutter { fill: var(--rose); }
+.pc-stripe { fill: var(--rose); opacity: 0.55; }
+.pc-slot { fill: var(--bg); opacity: 0.55; }
+
+/* The little blink the moment the camera lands, as if it had just fired. */
+.pc-flash {
+  animation: flashPop 1.1s var(--ease-soft) 0.25s 2;
+}
+
+@keyframes flashPop {
+  0%, 70%, 100% { opacity: 1; }
+  80% { opacity: 0.25; }
+}
+
+@keyframes cameraArrive {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.94) rotate(-3deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The print emerges from behind the camera body, so the slot really is a slot
+   rather than a picture of one. */
+.polaroid-slot {
+  position: relative;
+  z-index: -1;
+  width: min(190px, 52vw);
+  margin-top: -22px;
+}
+
+.polaroid-print {
+  padding: 8px 8px 26px;
+  border-radius: 4px;
+  background: var(--print);
+  box-shadow: var(--elev-2);
+  transform: translateY(-88%);
+}
+
+.polaroid-print.sliding {
+  animation: printSlide 1.4s cubic-bezier(0.33, 0.9, 0.3, 1) forwards;
+}
+
+@keyframes printSlide {
+  from {
+    transform: translateY(-88%) rotate(0deg);
+  }
+  70% {
+    transform: translateY(4%) rotate(-1.2deg);
+  }
+  to {
+    transform: translateY(0) rotate(-1.2deg);
+  }
+}
+
+.polaroid-print-window {
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 2px;
+  /* Undeveloped film: a blank chemical grey-white, not the page colour. */
+  background: #f2efe9;
+}
+
+.polaroid-print-window img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Nothing there until it develops. */
+  opacity: 0;
+}
+
+.polaroid-print.developing img {
+  animation: printDevelop 2.2s var(--ease-soft) 0.25s forwards;
+}
+
+/* Real film comes up through a cold, low-contrast murk before the colour
+   arrives — going straight from white to finished reads as a plain fade. */
+@keyframes printDevelop {
+  0% {
+    opacity: 0;
+    filter: contrast(0.4) brightness(1.5) saturate(0) blur(3px);
+  }
+  35% {
+    opacity: 0.75;
+    filter: contrast(0.7) brightness(1.2) saturate(0.3) blur(1.2px);
+  }
+  70% {
+    opacity: 1;
+    filter: contrast(0.95) brightness(1.04) saturate(0.85) blur(0.2px);
+  }
+  100% {
+    opacity: 1;
+    filter: none;
+  }
+}
+
+.polaroid-print-caption {
+  display: block;
+  height: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .polaroid-camera,
+  .pc-flash,
+  .polaroid-print.sliding,
+  .polaroid-print.developing img {
+    animation: none;
+  }
+}
+
+/* --------------------------------------------------------- a year ago today */
+
+.on-this-day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  background: var(--note-bg);
+  color: inherit;
+  text-decoration: none;
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+
+.on-this-day:hover {
+  transform: translateY(-2px) rotate(-0.6deg);
+}
+
+.on-this-day img {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: var(--r-xs);
+  /* A print in a corner of the page, tilted like it was tucked there. */
+  transform: rotate(-3deg);
+  box-shadow: var(--elev-1);
+}
+
+.on-this-day-text {
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-sm);
+}
+
+.on-this-day-text strong {
+  color: var(--text);
+}
+
+.on-this-day-text span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
 /* --------------------------------------------------------- floating hearts */
 
 .burst-layer {

@@ -479,11 +479,11 @@ function renderRoomMessage(bothComplete) {
   } else if (bothComplete) {
     roomMessage.textContent = 'Both of you are done. You can generate your collage now.';
   } else if (myCount >= 3) {
-    roomMessage.textContent = `Your photos are done. Waiting for ${ROLES[state.role].waitingFor} to finish.`;
+    roomMessage.textContent = `That's your three. ${ROLES[state.role].waitingFor} will fill hers in when she's there.`;
   } else if (theirCount >= 3) {
-    roomMessage.textContent = `${ROLES[state.role].waitingFor} is done. Your turn to finish the memory.`;
+    roomMessage.textContent = `${ROLES[state.role].waitingFor} has left you three. Your turn.`;
   } else {
-    roomMessage.textContent = 'Take 3 sweet photos. The room updates in real time.';
+    roomMessage.textContent = 'Three photos each. They appear on her screen as you take them.';
   }
 }
 
@@ -630,6 +630,9 @@ function renderCollageSection(canGenerate) {
 
   section.classList.remove('hidden');
 
+  // The stage is where the camera animation plays; once it has finished, the
+  // finished print replaces it. Kept as one element so a re-render mid-develop
+  // cannot leave two collages on screen.
   const preview = state.collagePreviewUrl
     ? `<img class="collage-preview" src="${escapeAttr(state.collagePreviewUrl)}" alt="Generated collage preview" />`
     : '';
@@ -656,7 +659,7 @@ function renderCollageSection(canGenerate) {
         ${buildSegmented('Format', 'collageExport', EXPORT_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })), state.collageExport)}
       </div>
     </div>
-    ${preview}
+    <div id="collageStage" class="collage-stage">${preview}</div>
     <div class="action-row">
       <button class="primary" id="generateCollageBtn">Generate collage</button>
       <button class="secondary" id="downloadCollageBtn" ${needsBlob}>Download PNG</button>
