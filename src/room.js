@@ -335,6 +335,34 @@ export async function updateDoodle({ roomId, uid, myRole, ownerRole, index, enco
   });
 }
 
+// Stickers, stored exactly like doodles: one key each, so you can both
+// decorate the same photo without either being able to peel the other's off.
+export async function updateStickers({ roomId, uid, myRole, ownerRole, index, encoded, room = null }) {
+  await assertParticipant({ roomId, uid, role: myRole, room });
+
+  const safeIndex = Math.max(1, Math.min(index, 3));
+
+  await updateDoc(doc(db, 'rooms', roomId, 'photos', `${ownerRole}-${safeIndex}`), {
+    [`stickers.${myRole}`]: String(encoded || '')
+  });
+}
+
+// A caption written by hand rather than typed.
+//
+// Unlike doodles and stickers this is owner-only, because it is a caption: it
+// belongs to whoever's photo it is, in the same way the typed one does. It sits
+// alongside `caption` rather than replacing it, so switching back to typing
+// never destroys what you wrote.
+export async function updateHandwriting({ roomId, uid, role, index, encoded, room = null }) {
+  await assertParticipant({ roomId, uid, role, room });
+
+  const safeIndex = Math.max(1, Math.min(index, 3));
+
+  await updateDoc(doc(db, 'rooms', roomId, 'photos', `${role}-${safeIndex}`), {
+    handwriting: String(encoded || '')
+  });
+}
+
 // Requests a synchronized "shoot together" moment. Both partners' clients
 // watch the room doc and, once they observe the server-resolved
 // `requestedAt` timestamp, count down to the SAME future instant

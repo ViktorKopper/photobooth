@@ -31,10 +31,12 @@ import {
   closeCaptionEditor,
   openCaptionEditor,
   saveCaptionEditor,
+  wireCaptionEditor,
   swapPhotosFlow,
   toggleReactionFlow
 } from '../features/photos.js';
 import { openDoodleEditor, wireDoodleEditor } from '../features/doodleEditor.js';
+import { buildStickerSheet } from '../features/stickerLayer.js';
 import { sendPokeFlow } from '../features/poke.js';
 import { renderPoseCard } from '../features/poseCard.js';
 import { isHereNow, schedulePresenceExpiry } from '../features/presence.js';
@@ -172,14 +174,25 @@ export function renderRoomShell() {
       <div id="doodleOverlay" class="caption-editor-overlay doodle-overlay hidden">
         <div class="caption-editor-card doodle-card">
           <p class="doodle-title">Draw on it <span id="doodleWho" class="doodle-who"></span></p>
+          <div class="segmented doodle-modes" role="group" aria-label="Tool">
+            <button type="button" class="segmented-option active" data-doodle-mode="draw">${ICONS.pencilTip} Marker</button>
+            <button type="button" class="segmented-option" data-doodle-mode="stick">${ICONS.heartFilled} Stickers</button>
+          </div>
+
           <div class="doodle-stage">
             <img id="doodleImg" alt="" />
             <svg id="doodleSurface" class="doodle-surface" viewBox="0 0 1000 1000" preserveAspectRatio="none">
               <path id="doodleTheirs" fill="none" stroke-linecap="round" stroke-linejoin="round" />
               <path id="doodleMine" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+              <g id="stickerLayer"></g>
             </svg>
           </div>
-          <p id="doodleFull" class="doodle-full hidden">That's as much marker as fits on one photo.</p>
+
+          <div id="doodleDrawTools">
+            <p id="doodleFull" class="doodle-full hidden">That's as much marker as fits on one photo.</p>
+          </div>
+          <div id="doodleStickTools" class="hidden">${buildStickerSheet()}</div>
+
           <div class="action-row doodle-actions">
             <button class="ghost small" id="doodleUndoBtn">Undo</button>
             <button class="ghost small" id="doodleClearBtn">Clear mine</button>
@@ -200,6 +213,24 @@ export function renderRoomShell() {
             placeholder="write a note for this moment..."
             autocomplete="off"
           />
+
+          <div class="segmented caption-modes" role="group" aria-label="Caption style">
+            <button type="button" class="segmented-option active" data-caption-mode="type">Type</button>
+            <button type="button" class="segmented-option" data-caption-mode="write">${ICONS.pencilTip} Write it</button>
+          </div>
+
+          <div id="captionWritePanel" class="hidden">
+            <svg id="handwritingPad" class="handwriting-pad" viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label="Write your caption here">
+              <line class="handwriting-rule" x1="20" y1="150" x2="980" y2="150" />
+              <path id="handwritingInk" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <div class="handwriting-actions">
+              <button type="button" class="ghost small" id="handwritingUndoBtn">Undo</button>
+              <button type="button" class="ghost small" id="handwritingClearBtn">Clear</button>
+              <span class="handwriting-hint">Use a finger, or drag with the mouse.</span>
+            </div>
+          </div>
+
           <div class="action-row">
             <button class="secondary" id="captionEditorCancelBtn">Cancel</button>
             <button class="primary" id="captionEditorSaveBtn">Save</button>
@@ -284,6 +315,7 @@ function wireRoomShell() {
   });
 
   wireDoodleEditor();
+  wireCaptionEditor();
 
   document.querySelector('#captionEditorCancelBtn').addEventListener('click', closeCaptionEditor);
   document.querySelector('#captionEditorSaveBtn').addEventListener('click', saveCaptionEditor);

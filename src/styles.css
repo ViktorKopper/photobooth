@@ -1259,6 +1259,127 @@ p {
   font-size: var(--fs-xs);
 }
 
+.doodle-modes,
+.caption-modes {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+/* In sticker mode the surface picks things up rather than painting, so the
+   cursor should stop promising a pen. */
+.doodle-surface.placing {
+  cursor: grab;
+}
+
+.doodle-surface.placing:active {
+  cursor: grabbing;
+}
+
+/* ------------------------------------------------------------- the sheet */
+
+.sticker-sheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sticker-choice {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--field-bg);
+  cursor: pointer;
+  transition: transform var(--dur-base) var(--ease-spring),
+    background var(--dur-fast) var(--ease-soft);
+}
+
+.sticker-choice:hover {
+  transform: translateY(-2px) rotate(-6deg);
+  background: var(--hover-bg);
+}
+
+.sticker-choice svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sticker-placed {
+  cursor: grab;
+}
+
+/* The selected one gets a soft halo rather than a box: a rectangle around a
+   heart reads as an error state. */
+.sticker-placed.selected path {
+  filter: drop-shadow(0 0 14px var(--rose));
+}
+
+.sticker-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--note-bg);
+}
+
+.sticker-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 140px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.sticker-slider input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* --------------------------------------------------------- handwriting pad */
+
+.handwriting-pad {
+  display: block;
+  width: 100%;
+  aspect-ratio: 5 / 1;
+  margin-top: 4px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-md);
+  background: var(--print);
+  /* Without this a drag scrolls the page on a phone instead of writing. */
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* A ruled line to write on, like the notebook the rest of this is modelled on. */
+.handwriting-rule {
+  stroke: var(--rule);
+  stroke-width: 2;
+}
+
+.handwriting-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.handwriting-hint {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.caption-input.hidden {
+  display: none;
+}
+
 .doodle-actions {
   margin-top: 12px;
   flex-wrap: wrap;

@@ -4,8 +4,8 @@ import {
   DOODLE_MAX_CHARS,
   drawStrokes,
   encodeStrokes,
+  appendStroke,
   fitWithinLimit,
-  isAtLimit,
   isDot,
   simplifyStroke,
   strokesToSvgPath,
@@ -127,9 +127,28 @@ describe('the size cap', () => {
     expect(fitWithinLimit(small)).toBe(small);
   });
 
-  it('reports when there is no more room', () => {
-    expect(isAtLimit([line(10)])).toBe(false);
-    expect(isAtLimit(many())).toBe(true);
+  it('accepts a stroke that fits, and says so', () => {
+    const result = appendStroke([line(10)], line(10));
+    expect(result.accepted).toBe(true);
+    expect(result.strokes).toHaveLength(2);
+  });
+
+  it('refuses one that does not, and leaves the drawing untouched', () => {
+    // Asking "is it full?" beforehand cannot be answered honestly — a stroke is
+    // anywhere from eight characters to several hundred. Reporting after the
+    // fact is accurate, and puts the notice at the moment something was really
+    // refused rather than on a guess.
+    const packed = fitWithinLimit(many());
+    const result = appendStroke(packed, line(200));
+
+    expect(result.accepted).toBe(false);
+    expect(result.strokes).toBe(packed);
+  });
+
+  it('treats an empty stroke as harmlessly accepted', () => {
+    const strokes = [line(10)];
+    expect(appendStroke(strokes, []).strokes).toBe(strokes);
+    expect(appendStroke(strokes, null).accepted).toBe(true);
   });
 });
 

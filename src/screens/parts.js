@@ -10,10 +10,11 @@
 // same output, which is exactly what makes them testable.
 
 import { decodeStrokes, DOODLE_STROKE_RATIO, strokesToSvgPath } from '../doodle.js';
+import { decodeStickers, placementSvgTransform, stickerById } from '../stickers.js';
 import { ICONS, weatherIcon } from '../icons.js';
 import { escapeAttr, escapeHtml } from '../ui/html.js';
 import { CAPTION_INK } from '../config.js';
-import { daysTogether, milestoneFor, otherRole, streakFrom } from '../utils.js';
+import { daysTogether, milestoneFor, otherRole, ROLE_KEYS, streakFrom } from '../utils.js';
 import { ROLES } from '../utils.js';
 
 export function formatDays(count) {
@@ -195,11 +196,12 @@ export function buildThumbRow({ role, viewerRole, photos, replacingIndex = null 
 // without opening anything. Stretched with the photo rather than letterboxed:
 // the strokes were recorded in the photo's own coordinate space.
 export function doodleOverlay(photo) {
-  const layers = ['viktor', 'jericka']
+  const layers = ROLE_KEYS
     .map((role) => ({ role, strokes: decodeStrokes(photo.doodles?.[role] || '') }))
     .filter((layer) => layer.strokes.length);
 
-  if (!layers.length) return '';
+  const stickers = stickerMarkup(photo);
+  if (!layers.length && !stickers) return '';
 
   const paths = layers
     .map(
@@ -208,5 +210,19 @@ export function doodleOverlay(photo) {
     )
     .join('');
 
-  return `<svg class="thumb-doodle" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">${paths}</svg>`;
+  return `<svg class="thumb-doodle" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">${paths}${stickers}</svg>`;
+}
+
+// Drawn through the same transform the collage uses, so a sticker sits where it
+// was placed at every size the photo appears at.
+function stickerMarkup(photo) {
+  return ROLE_KEYS.flatMap((role) =>
+    decodeStickers(photo.stickers?.[role] || '').map((placement) => {
+      const sticker = stickerById(placement.id);
+      if (!sticker) return '';
+
+      const transform = placementSvgTransform(placement, { x: 0, y: 0, width: 1000, height: 1000 });
+      return `<g transform="${escapeAttr(transform)}"><path d="${escapeAttr(sticker.d)}" fill="${escapeAttr(sticker.color)}" /></g>`;
+    })
+  ).join('');
 }

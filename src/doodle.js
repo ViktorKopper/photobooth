@@ -107,8 +107,24 @@ export function fitWithinLimit(strokes, maxChars = DOODLE_MAX_CHARS) {
   return kept;
 }
 
-export function isAtLimit(strokes, maxChars = DOODLE_MAX_CHARS) {
-  return encodeStrokes(strokes).length >= maxChars;
+// Adds a stroke if it fits, and says whether it did.
+//
+// Asking "is it full?" before drawing cannot be answered honestly: a stroke is
+// anywhere from eight characters to several hundred, so there is no threshold
+// that means "the next one will fit". The first version guessed, and guessed
+// wrong in the worst direction — fitWithinLimit only ever returns something
+// strictly under the cap, so the check could never fire, and a stroke drawn
+// past the limit vanished with nothing said about why.
+//
+// Reporting after the fact is both accurate and better behaved: the notice
+// appears at the exact moment something was actually refused.
+export function appendStroke(strokes, stroke, maxChars = DOODLE_MAX_CHARS) {
+  if (!stroke?.length) return { strokes, accepted: true };
+
+  const candidate = [...strokes, stroke];
+  if (encodeStrokes(candidate).length > maxChars) return { strokes, accepted: false };
+
+  return { strokes: candidate, accepted: true };
 }
 
 /* --------------------------------------------------------------- rendering */

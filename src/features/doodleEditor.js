@@ -11,15 +11,27 @@
 
 import { CAPTION_INK } from '../config.js';
 import {
+  appendStroke,
   decodeStrokes,
   DOODLE_STROKE_RATIO,
   encodeStrokes,
-  fitWithinLimit,
-  isAtLimit,
   simplifyStroke,
   strokesToSvgPath
 } from '../doodle.js';
 import { roomApi } from '../roomApi.js';
+import {
+  addSticker,
+  clearStickers,
+  dragSelected,
+  encodeCurrentStickers,
+  endDrag,
+  removeSelected,
+  resetStickerLayer,
+  selectStickerAt,
+  setSelectedRotation,
+  setSelectedScale,
+  stickerLayerMarkup
+} from './stickerLayer.js';
 import { state } from '../store.js';
 import { restartAnimation } from '../ui/motion.js';
 import { showError, showToast } from '../ui/toast.js';
@@ -31,6 +43,13 @@ let editing = null;
 let strokes = [];
 let active = null;
 let undoStack = [];
+// 'draw' or 'stick'. The marker and the sheet share one surface because they
+// are the same gesture on the same photo; making them separate screens would
+// mean choosing a tool before knowing what you want.
+let mode = 'draw';
+// Set when a stroke was actually refused, so the notice appears at the moment
+// something was really lost rather than on a guess.
+let full = false;
 
 const surface = () => document.querySelector('#doodleSurface');
 const myPathEl = () => document.querySelector('#doodleMine');
@@ -60,8 +79,8 @@ function repaint() {
   if (undoBtn) undoBtn.disabled = strokes.length === 0;
   if (clearBtn) clearBtn.disabled = strokes.length === 0;
 
-  const full = document.querySelector('#doodleFull');
-  if (full) full.classList.toggle('hidden', !isAtLimit(drawing));
+  const notice = document.querySelector('#doodleFull');
+  if (notice) notice.classList.toggle('hidden', !full);
 }
 
 /* ------------------------------------------------------------------ opening */
@@ -77,6 +96,9 @@ export function openDoodleEditor(ownerRole, index) {
   strokes = decodeStrokes(photo.doodles?.[myRole] || '');
   undoStack = [];
   active = null;
+  mode = 'draw';
+  full = false;
+  resetStickerLayer(photo.stickers?.[myRole] || '', repaintStickers);
 
   const overlay = document.querySelector('#doodleOverlay');
   const image = document.querySelector('#doodleImg');
@@ -96,6 +118,9 @@ export function openDoodleEditor(ownerRole, index) {
   myPathEl().setAttribute('stroke-width', String(width));
   theirPathEl().setAttribute('stroke-width', String(width));
 
+  document.querySelector('#stickerLayer').innerHTML = stickerLayerMarkup();
+  setMode('draw');
+
   overlay.classList.remove('hidden');
   restartAnimation(overlay);
   restartAnimation(overlay.querySelector('.doodle-card'));
@@ -108,6 +133,7 @@ export function closeDoodleEditor() {
   strokes = [];
   active = null;
   undoStack = [];
+  clearStickers();
   document.querySelector('#doodleOverlay')?.classList.add('hidden');
 }
 
@@ -117,8 +143,42 @@ export function isDoodling() {
 
 /* ----------------------------------------------------------------- drawing */
 
+// Pixels within the surface, which is what the sticker geometry works in.
+function pixelFrom(event) {
+  const box = surface().getBoundingClientRect();
+  if (!box.width || !box.height) return null;
+  return { x: event.clientX - box.left, y: event.clientY - box.top, width: box.width, height: box.height };
+}
+
+function repaintStickers() {
+  const layer = document.querySelector('#stickerLayer');
+  if (layer) layer.innerHTML = stickerLayerMarkup();
+}
+
+function setMode(next) {
+  mode = next;
+
+  document.querySelectorAll('[data-doodle-mode]').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.doodleMode === next);
+  });
+  document.querySelector('#doodleDrawTools')?.classList.toggle('hidden', next !== 'draw');
+  document.querySelector('#doodleStickTools')?.classList.toggle('hidden', next !== 'stick');
+  // The marker must not paint while you are dragging a sticker around, and a
+  // sticker must not be picked up while you are drawing over it.
+  surface()?.classList.toggle('placing', next === 'stick');
+}
+
 function onPointerDown(event) {
-  if (!editing || isAtLimit(strokes)) return;
+  if (!editing) return;
+
+  if (mode === 'stick') {
+    const pixel = pixelFrom(event);
+    if (!pixel) return;
+    surface().setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+    selectStickerAt(pixel, { width: pixel.width, height: pixel.height });
+    return;
+  }
 
   const point = pointFrom(event);
   if (!point) return;
@@ -133,6 +193,12 @@ function onPointerDown(event) {
 }
 
 function onPointerMove(event) {
+  if (mode === 'stick') {
+    const pixel = pixelFrom(event);
+    if (pixel) dragSelected(pixel, { width: pixel.width, height: pixel.height });
+    return;
+  }
+
   if (!active) return;
   const point = pointFrom(event);
   if (!point) return;
@@ -142,6 +208,11 @@ function onPointerMove(event) {
 }
 
 function onPointerUp() {
+  if (mode === 'stick') {
+    endDrag();
+    return;
+  }
+
   if (!active) return;
 
   // Simplified once at the end rather than while drawing, so the line you see
@@ -149,14 +220,22 @@ function onPointerUp() {
   const finished = simplifyStroke(active);
   active = null;
 
-  undoStack.push([...strokes]);
-  strokes = fitWithinLimit([...strokes, finished]);
+  const result = appendStroke(strokes, finished);
+  full = !result.accepted;
+
+  if (result.accepted) {
+    undoStack.push([...strokes]);
+    strokes = result.strokes;
+  }
+
   repaint();
 }
 
 function undo() {
   if (!undoStack.length) return;
   strokes = undoStack.pop();
+  // Undoing makes room again.
+  full = false;
   repaint();
 }
 
@@ -164,6 +243,7 @@ function clearAll() {
   if (!strokes.length) return;
   undoStack.push([...strokes]);
   strokes = [];
+  full = false;
   repaint();
 }
 
@@ -179,7 +259,10 @@ async function save() {
   button.textContent = 'Saving...';
 
   try {
-    const { updateDoodle } = await roomApi();
+    const { updateDoodle, updateStickers } = await roomApi();
+
+    // Two writes rather than one, because they are two fields on two different
+    // rules — and either is worth keeping if the other fails.
     await updateDoodle({
       roomId: state.roomId,
       uid: state.user.uid,
@@ -189,8 +272,18 @@ async function save() {
       encoded: encodeStrokes(strokes),
       room: state.room
     });
+    await updateStickers({
+      roomId: state.roomId,
+      uid: state.user.uid,
+      myRole: state.role,
+      ownerRole,
+      index,
+      encoded: encodeCurrentStickers(),
+      room: state.room
+    });
+
     closeDoodleEditor();
-    showToast(strokes.length ? 'Drawn ♡' : 'Rubbed out');
+    showToast('Decorated ♡');
   } catch (error) {
     showError(error.message, 'Could not save the drawing.');
   } finally {
@@ -213,6 +306,23 @@ export function wireDoodleEditor() {
   // A stroke left open by the pointer leaving the window would otherwise keep
   // extending itself the next time the mouse came back.
   pad.addEventListener('pointerleave', onPointerUp);
+
+  document.querySelectorAll('[data-doodle-mode]').forEach((tab) => {
+    tab.addEventListener('click', () => setMode(tab.dataset.doodleMode));
+  });
+
+  document.querySelector('.sticker-sheet').addEventListener('click', (event) => {
+    const choice = event.target.closest('[data-sticker]');
+    if (choice) addSticker(choice.dataset.sticker);
+  });
+
+  document.querySelector('#stickerScale').addEventListener('input', (event) => {
+    setSelectedScale(event.target.value);
+  });
+  document.querySelector('#stickerRotate').addEventListener('input', (event) => {
+    setSelectedRotation(event.target.value);
+  });
+  document.querySelector('#stickerDeleteBtn').addEventListener('click', removeSelected);
 
   document.querySelector('#doodleUndoBtn').addEventListener('click', undo);
   document.querySelector('#doodleClearBtn').addEventListener('click', clearAll);

@@ -222,7 +222,9 @@ service cloud.firestore {
             'height',
             'caption',
             'reactions',
-            'doodles'
+            'doodles',
+            'stickers',
+            'handwriting'
           ])
           && validRole(data.owner)
           && data.ownerUid == request.auth.uid
@@ -256,6 +258,24 @@ service cloud.firestore {
             && (!('jericka' in data.doodles) || (
               data.doodles.jericka is string && data.doodles.jericka.size() <= 4000
             ))
+          ))
+          // Same arrangement again for stickers. Shorter cap: a placement is a
+          // couple of dozen characters and the sheet holds twelve.
+          && (!('stickers' in data) || (
+            data.stickers is map
+            && data.stickers.keys().hasOnly(['viktor', 'jericka'])
+            && (!('viktor' in data.stickers) || (
+              data.stickers.viktor is string && data.stickers.viktor.size() <= 600
+            ))
+            && (!('jericka' in data.stickers) || (
+              data.stickers.jericka is string && data.stickers.jericka.size() <= 600
+            ))
+          ))
+          // Owner-only, unlike the two above: this is a caption, and a caption
+          // belongs to whoever's photo it is. Nothing extra is needed to
+          // enforce that — it travels on the owner's own document write.
+          && (!('handwriting' in data) || (
+            data.handwriting is string && data.handwriting.size() <= 4000
           ));
         }
 
@@ -282,6 +302,37 @@ service cloud.firestore {
         // The same arrangement as reactions, one field over: either person
         // may draw on any photo in the room, but only inside their own key —
         // so neither can rub out the other's marker.
+        function isStickerOnlyUpdate(role) {
+          let before = resource.data;
+          let after = request.resource.data;
+          let beforeStickers = ('stickers' in before) ? before.stickers : {};
+          let afterStickers = after.stickers;
+          return validRole(role)
+            && before.diff(after).affectedKeys().hasOnly(['stickers'])
+            && afterStickers is map
+            && afterStickers.keys().hasOnly(['viktor', 'jericka'])
+            && (!('viktor' in afterStickers) || (
+              afterStickers.viktor is string && afterStickers.viktor.size() <= 600
+            ))
+            && (!('jericka' in afterStickers) || (
+              afterStickers.jericka is string && afterStickers.jericka.size() <= 600
+            ))
+            && (role == 'viktor'
+                ? afterStickers.get('jericka', '') == beforeStickers.get('jericka', '')
+                : afterStickers.get('viktor', '') == beforeStickers.get('viktor', ''));
+        }
+
+        // The owner rewriting their own handwritten caption, without having to
+        // resend the whole photo document to do it.
+        function isHandwritingOnlyUpdate(role) {
+          let after = request.resource.data;
+          return validRole(role)
+            && resource.data.owner == role
+            && resource.data.diff(after).affectedKeys().hasOnly(['handwriting'])
+            && after.handwriting is string
+            && after.handwriting.size() <= 4000;
+        }
+
         function isDoodleOnlyUpdate(role) {
           let before = resource.data;
           let after = request.resource.data;
@@ -308,6 +359,8 @@ service cloud.firestore {
             (validPhoto(request.resource.data) && ownsRole(roomId, request.resource.data.owner))
             || isReactionOnlyUpdate(callerRole(roomId))
             || isDoodleOnlyUpdate(callerRole(roomId))
+            || isStickerOnlyUpdate(callerRole(roomId))
+            || isHandwritingOnlyUpdate(callerRole(roomId))
           );
         allow delete: if isParticipant(roomId);
       }

@@ -2,6 +2,20 @@
 // it to a different slot.
 
 import { CAPTION_INK } from '../config.js';
+import { HANDWRITING_STROKE_RATIO } from './handwriting.js';
+import {
+  beginStroke,
+  canUndoHandwriting,
+  clearHandwriting,
+  encodeCurrentHandwriting,
+  endStroke,
+  extendStroke,
+  handwritingPath,
+  hasHandwriting,
+  isHandwritingFull,
+  resetHandwriting,
+  undoHandwriting
+} from './handwriting.js';
 import { roomApi } from '../roomApi.js';
 import { state } from '../store.js';
 import { restartAnimation } from '../ui/motion.js';
@@ -53,6 +67,74 @@ export async function toggleReactionFlow(ownerRole, index) {
 
 /* ----------------------------------------------------------- caption editor */
 
+// 'type' or 'write'. Both are kept on the document, so switching back and
+// forth never destroys the other one.
+let captionMode = 'type';
+
+const pad = () => document.querySelector('#handwritingPad');
+
+function repaintHandwriting() {
+  const ink = document.querySelector('#handwritingInk');
+  if (!ink) return;
+
+  ink.setAttribute('d', handwritingPath());
+  document.querySelector('#handwritingUndoBtn').disabled = !canUndoHandwriting();
+  document.querySelector('#handwritingClearBtn').disabled = !hasHandwriting();
+}
+
+function setCaptionMode(next) {
+  captionMode = next;
+
+  document.querySelectorAll('[data-caption-mode]').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.captionMode === next);
+  });
+  document.querySelector('#captionWritePanel')?.classList.toggle('hidden', next !== 'write');
+  document.querySelector('#captionEditorInput')?.classList.toggle('hidden', next === 'write');
+}
+
+// Normalised 0..1 inside the pad, which is the coordinate space the strokes are
+// stored in — the same arrangement the doodle surface uses, so a finger and a
+// mouse are handled by one code path rather than two.
+function padPoint(event) {
+  const box = pad().getBoundingClientRect();
+  if (!box.width || !box.height) return null;
+  return { x: (event.clientX - box.left) / box.width, y: (event.clientY - box.top) / box.height };
+}
+
+function onPadDown(event) {
+  const point = padPoint(event);
+  if (!point || isHandwritingFull()) return;
+
+  pad().setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+  beginStroke(point);
+}
+
+function onPadMove(event) {
+  const point = padPoint(event);
+  if (point) extendStroke(point);
+}
+
+export function wireCaptionEditor() {
+  const panel = document.querySelector('#captionWritePanel');
+  if (!panel || panel.dataset.wired === 'true') return;
+  panel.dataset.wired = 'true';
+
+  document.querySelectorAll('[data-caption-mode]').forEach((tab) => {
+    tab.addEventListener('click', () => setCaptionMode(tab.dataset.captionMode));
+  });
+
+  const surface = pad();
+  surface.addEventListener('pointerdown', onPadDown);
+  surface.addEventListener('pointermove', onPadMove);
+  surface.addEventListener('pointerup', endStroke);
+  surface.addEventListener('pointercancel', endStroke);
+  surface.addEventListener('pointerleave', endStroke);
+
+  document.querySelector('#handwritingUndoBtn').addEventListener('click', undoHandwriting);
+  document.querySelector('#handwritingClearBtn').addEventListener('click', clearHandwriting);
+}
+
 export function openCaptionEditor(role, index) {
   const photo = state.photos.find((item) => item.owner === role && item.index === index);
   if (!photo) return;
@@ -66,6 +148,17 @@ export function openCaptionEditor(role, index) {
   img.src = photo.downloadUrl;
   input.value = photo.caption || '';
   input.style.color = CAPTION_INK[role] ?? CAPTION_INK.viktor;
+
+  resetHandwriting(photo.handwriting || '', repaintHandwriting);
+  const ink = document.querySelector('#handwritingInk');
+  ink.setAttribute('stroke', CAPTION_INK[role] ?? CAPTION_INK.viktor);
+  ink.setAttribute('stroke-width', String(HANDWRITING_STROKE_RATIO * 1000));
+
+  // Opens on whichever the photo already has, so editing something written by
+  // hand doesn't silently present an empty text box instead.
+  setCaptionMode(photo.handwriting ? 'write' : 'type');
+  repaintHandwriting();
+
   overlay.classList.remove('hidden');
 
   // The overlay is toggled with display:none, and a CSS animation won't replay
@@ -95,7 +188,8 @@ export async function saveCaptionEditor() {
   saveBtn.textContent = 'Saving...';
 
   try {
-    const { updateCaption } = await roomApi();
+    const { updateCaption, updateHandwriting } = await roomApi();
+
     await updateCaption({
       roomId: state.roomId,
       uid: state.user.uid,
@@ -104,6 +198,18 @@ export async function saveCaptionEditor() {
       caption,
       room: state.room
     });
+
+    // Written separately, and only by the owner. Saving from the typing tab
+    // clears the handwriting: two captions on one photo would both be drawn.
+    await updateHandwriting({
+      roomId: state.roomId,
+      uid: state.user.uid,
+      role,
+      index,
+      encoded: captionMode === 'write' ? encodeCurrentHandwriting() : '',
+      room: state.room
+    });
+
     closeCaptionEditor();
     showToast('Caption saved ♡');
   } catch (error) {

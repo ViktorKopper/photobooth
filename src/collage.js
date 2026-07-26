@@ -1,4 +1,6 @@
 import { decodeStrokes, drawStrokes, strokeWidthFor } from './doodle.js';
+import { HANDWRITING_ASPECT, HANDWRITING_STROKE_RATIO } from './features/handwriting.js';
+import { decodeStickers, drawStickers } from './stickers.js';
 import { clamp, daysTogether, distanceBetween, formatDate, formatDistanceKm, ROLE_KEYS } from './utils.js';
 
 // Colour themes for the finished collage. Every drawing routine reads from
@@ -455,6 +457,38 @@ function drawDoodleLayers(ctx, doodles, rect) {
   });
 }
 
+function drawStickerLayer(ctx, stickers, rect) {
+  if (!stickers) return;
+
+  // Both people's, in the order they were placed. Unlike doodles these carry
+  // their own colours, which the theme deliberately does not override: a
+  // sticker is an object, not handwriting.
+  ROLE_KEYS.forEach((role) => {
+    drawStickers(ctx, decodeStickers(stickers[role] || ''), rect);
+  });
+}
+
+// A caption written by hand, in the band under the photo where the typed one
+// would have gone. Stored against a fixed 5:1 box so the pad in the editor and
+// this band agree without either knowing the other's size.
+function drawHandwrittenCaption(ctx, encoded, { x, y, width, color }) {
+  const strokes = decodeStrokes(encoded);
+  if (!strokes.length) return false;
+
+  const height = width / HANDWRITING_ASPECT;
+
+  drawStrokes(ctx, strokes, {
+    x,
+    y,
+    width,
+    height,
+    color,
+    lineWidth: Math.max(1, width * HANDWRITING_STROKE_RATIO)
+  });
+
+  return true;
+}
+
 function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
   const {
     rotationDeg = 0,
@@ -464,7 +498,9 @@ function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
     captionColor = PALETTE.label,
     captionRotationDeg = 0,
     markerReady = false,
-    doodles = null
+    doodles = null,
+    stickers = null,
+    handwriting = ''
   } = options;
 
   const cx = x + width / 2;
@@ -523,6 +559,15 @@ function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
     width: innerWidth,
     height: innerHeight
   });
+
+  // Stickers sit on top of the marker — they are objects stuck onto the photo,
+  // and ink drawn over one would look like it had soaked through.
+  drawStickerLayer(ctx, stickers, {
+    x: innerX,
+    y: innerY,
+    width: innerWidth,
+    height: innerHeight
+  });
   ctx.restore();
 
   ctx.save();
@@ -536,7 +581,18 @@ function drawPhotoCard(ctx, image, x, y, width, height, radius, options = {}) {
     drawWashiTape(ctx, x + width / 2, y, width, washiColor, washiAngle);
   }
 
-  drawCardCaption(ctx, caption, x, y, width, height, innerY, innerHeight, captionColor, captionRotationDeg, markerReady);
+  // Handwriting wins where it exists: the two are alternatives, not layers, and
+  // drawing both would put two captions on one photo.
+  const wroteByHand = drawHandwrittenCaption(ctx, handwriting, {
+    x: innerX,
+    y: innerY + innerHeight + (height - topPad - innerHeight - bottomPad) + bottomPad * 0.12,
+    width: innerWidth,
+    color: captionColor
+  });
+
+  if (!wroteByHand) {
+    drawCardCaption(ctx, caption, x, y, width, height, innerY, innerHeight, captionColor, captionRotationDeg, markerReady);
+  }
 
   ctx.restore();
 }
@@ -865,7 +921,13 @@ async function loadOwnerItems(photos) {
   const items = [];
   for (const photo of photos) {
     const image = await loadImageFromUrl(photo.downloadUrl, photoCacheKey(photo));
-    items.push({ image, caption: photo.caption || '', doodles: photo.doodles || null });
+    items.push({
+      image,
+      caption: photo.caption || '',
+      doodles: photo.doodles || null,
+      stickers: photo.stickers || null,
+      handwriting: photo.handwriting || ''
+    });
   }
   return items;
 }
@@ -924,6 +986,8 @@ function drawGridLayout(ctx, dims, payload) {
       washiAngle: row % 2 === 0 ? -7 : 6,
       caption: viktorItems[row].caption,
       doodles: viktorItems[row].doodles,
+      stickers: viktorItems[row].stickers,
+      handwriting: viktorItems[row].handwriting,
       captionColor: PALETTE.viktorInk,
       captionRotationDeg: captionRotationFor(row * 2),
       markerReady
@@ -934,6 +998,8 @@ function drawGridLayout(ctx, dims, payload) {
       washiAngle: row % 2 === 0 ? 7 : -6,
       caption: jerickaItems[row].caption,
       doodles: jerickaItems[row].doodles,
+      stickers: jerickaItems[row].stickers,
+      handwriting: jerickaItems[row].handwriting,
       captionColor: PALETTE.jerickaInk,
       captionRotationDeg: captionRotationFor(row * 2 + 1),
       markerReady
@@ -1022,6 +1088,8 @@ function drawStripLayout(ctx, dims, payload) {
       washiAngle: -6,
       caption: viktorItems[round].caption,
       doodles: viktorItems[round].doodles,
+      stickers: viktorItems[round].stickers,
+      handwriting: viktorItems[round].handwriting,
       captionColor: PALETTE.viktorInk,
       captionRotationDeg: captionRotationFor(round * 2),
       markerReady
@@ -1035,6 +1103,8 @@ function drawStripLayout(ctx, dims, payload) {
       washiAngle: 6,
       caption: jerickaItems[round].caption,
       doodles: jerickaItems[round].doodles,
+      stickers: jerickaItems[round].stickers,
+      handwriting: jerickaItems[round].handwriting,
       captionColor: PALETTE.jerickaInk,
       captionRotationDeg: captionRotationFor(round * 2 + 1),
       markerReady
@@ -1126,6 +1196,8 @@ function drawHeroLayout(ctx, dims, payload) {
     washiAngle: -6,
     caption: heroItems[2].caption,
     doodles: heroItems[2].doodles,
+    stickers: heroItems[2].stickers,
+    handwriting: heroItems[2].handwriting,
     captionColor: heroInk,
     captionRotationDeg: captionRotationFor(2),
     markerReady
@@ -1135,11 +1207,11 @@ function drawHeroLayout(ctx, dims, payload) {
   drawHeartAt(ctx, width / 2, heroY + heroSize + 28, 32, PALETTE.connectorHeart);
 
   const smallItems = [
-    { image: otherItems[0].image, caption: otherItems[0].caption, doodles: otherItems[0].doodles, label: otherLabel, color: otherColor, ink: otherInk },
-    { image: otherItems[1].image, caption: otherItems[1].caption, doodles: otherItems[1].doodles, label: otherLabel, color: otherColor, ink: otherInk },
-    { image: otherItems[2].image, caption: otherItems[2].caption, doodles: otherItems[2].doodles, label: otherLabel, color: otherColor, ink: otherInk },
-    { image: heroItems[0].image, caption: heroItems[0].caption, doodles: heroItems[0].doodles, label: heroLabel, color: heroColor, ink: heroInk },
-    { image: heroItems[1].image, caption: heroItems[1].caption, doodles: heroItems[1].doodles, label: heroLabel, color: heroColor, ink: heroInk }
+    { image: otherItems[0].image, caption: otherItems[0].caption, doodles: otherItems[0].doodles, stickers: otherItems[0].stickers, handwriting: otherItems[0].handwriting, label: otherLabel, color: otherColor, ink: otherInk },
+    { image: otherItems[1].image, caption: otherItems[1].caption, doodles: otherItems[1].doodles, stickers: otherItems[1].stickers, handwriting: otherItems[1].handwriting, label: otherLabel, color: otherColor, ink: otherInk },
+    { image: otherItems[2].image, caption: otherItems[2].caption, doodles: otherItems[2].doodles, stickers: otherItems[2].stickers, handwriting: otherItems[2].handwriting, label: otherLabel, color: otherColor, ink: otherInk },
+    { image: heroItems[0].image, caption: heroItems[0].caption, doodles: heroItems[0].doodles, stickers: heroItems[0].stickers, handwriting: heroItems[0].handwriting, label: heroLabel, color: heroColor, ink: heroInk },
+    { image: heroItems[1].image, caption: heroItems[1].caption, doodles: heroItems[1].doodles, stickers: heroItems[1].stickers, handwriting: heroItems[1].handwriting, label: heroLabel, color: heroColor, ink: heroInk }
   ];
 
   smallItems.forEach((item, index) => {
@@ -1150,6 +1222,8 @@ function drawHeroLayout(ctx, dims, payload) {
       washiAngle: index % 2 === 0 ? -7 : 7,
       caption: item.caption,
       doodles: item.doodles,
+      stickers: item.stickers,
+      handwriting: item.handwriting,
       captionColor: item.ink,
       captionRotationDeg: captionRotationFor(index),
       markerReady
